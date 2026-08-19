@@ -1,0 +1,9 @@
+.codex-tmp/
+artifacts/
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+*.VC.db
+*.opendb

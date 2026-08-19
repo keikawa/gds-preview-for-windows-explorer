@@ -1,0 +1,4 @@
+LIBRARY "GdsPreview.Native"
+EXPORTS
+    DllCanUnloadNow
+    DllGetClassObject
