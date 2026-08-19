@@ -58,6 +58,17 @@ Create a release ZIP after a successful build:
 powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1 -Version 0.1.0-beta.1
 ```
 
+Create a self-contained x64 MSIX for Microsoft Store submission:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\package-msix.ps1 `
+  -Version 0.1.0.0
+```
+
+This requires the Windows 10/11 SDK in addition to the normal build dependencies. Store identity,
+sideload signing, certification, and test instructions are in
+[packaging/STORE-SUBMISSION.md](packaging/STORE-SUBMISSION.md).
+
 ## Architecture
 
 - `src/GdsPreview.Core` — dependency-free GDSII parser and hierarchical scene builder
@@ -66,6 +77,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1 -Version 0.1.0-be
 - `tests/GdsPreview.Core.Tests` — regression and load tests without an external test framework
 - `tools/GdsPreview.Sample` — deterministic GDSII sample generator
 - `scripts` — build, package, install, verification, and uninstall commands
+- `packaging` — MSIX manifest and Microsoft Store submission instructions
 
 The handler implements `IInitializeWithFile`, `IPreviewHandler`, `IObjectWithSite`, `IOleWindow`, and
 `IPreviewHandlerVisuals`. A dedicated AppID with `DllSurrogate=Prevhost.exe` isolates it from other
@@ -96,3 +108,8 @@ shows `simplified` whenever limits affected the preview.
 ## Security
 
 Please report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
+## Privacy
+
+GDS Preview processes files locally and does not collect or transmit personal data. See
+[PRIVACY.md](PRIVACY.md).
