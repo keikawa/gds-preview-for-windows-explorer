@@ -26,9 +26,18 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Set up Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.2
+        shell: powershell
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'zig-x86_64-windows-0.15.2.zip'
+          $destination = Join-Path $env:RUNNER_TEMP 'zig-0.15.2'
+          Invoke-WebRequest `
+            -Uri 'https://ziglang.org/download/0.15.2/zig-x86_64-windows-0.15.2.zip' `
+            -OutFile $archive
+          $expected = '3a0ed1e8799a2f8ce2a6e6290a9ff22e6906f8227865911fb7ddedc3cc14cb0c'
+          $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Zig archive checksum mismatch: $actual" }
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination
+          (Join-Path $destination 'zig-x86_64-windows-0.15.2') >> $env:GITHUB_PATH
 
       - name: Build and test
         shell: powershell
