@@ -1,14 +1,8 @@
 # GDS Preview for Windows Explorer
 
-Preview GDSII layout files directly in the Windows Explorer preview pane.
+Preview `.gds` and `.gdsii` layout files directly in the Windows Explorer preview pane.
 
-![GDSII preview in Windows Explorer](docs/images/demo-preview.png)
-
-GDS Preview for Windows Explorer is an x64 preview handler for `.gds` and `.gdsii` files. The
-Explorer-facing COM DLL stays deliberately small: parsing and rasterization happen in a separate,
-time-limited renderer process so malformed or unusually large layouts do not freeze Explorer.
-
-[日本語](#日本語)
+![GDSII preview in Windows Explorer](https://github.com/user-attachments/assets/5471cd90-893c-45f6-a198-6b6ad712e110)
 
 ## Features
 
@@ -98,20 +92,6 @@ shows `simplified` whenever limits affected the preview.
 ## License
 
 [MIT](LICENSE)
-
-## 日本語
-
-Windows 10/11 x64のエクスプローラーで、`.gds`／`.gdsii`を選択したときに半導体・フォトニクス
-レイアウトをプレビューペインへ表示します。
-
-Explorer内ではGDSIIを解析しません。ネイティブCOM DLLは、時間制限付きの独立レンダラーから
-共有メモリで完成画像だけを受け取るため、壊れたファイルや巨大なレイアウトがExplorer全体を
-巻き込みにくい構成です。
-
-配布版は[Releases](https://github.com/keikawa/gds-preview-for-windows-explorer/releases)からZIPを
-取得し、ZIPのプロパティに「許可する」が表示される場合は解除してから展開し、`install.cmd`を
-実行してください。インストール後はExplorerをすべて閉じて開き直し、`Alt+P`でプレビューペインを
-表示します。通常のインストールは現在のユーザーだけが対象で、管理者権限は不要です。
 
 ## Security
 
