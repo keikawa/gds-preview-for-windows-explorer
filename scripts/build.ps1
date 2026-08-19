@@ -42,7 +42,9 @@ $nativeSource = Join-Path $repoRoot 'native\GdsPreview.Native.cpp'
 $nativeDefinition = Join-Path $repoRoot 'native\GdsPreview.Native.def'
 $nativeSmokeSource = Join-Path $repoRoot 'native\NativeSmoke.cpp'
 $hangRendererSource = Join-Path $repoRoot 'native\HangRenderer.cpp'
+$launcherSource = Join-Path $repoRoot 'native\GdsPreview.App.cpp'
 $nativeDll = Join-Path $publishDirectory 'GdsPreview.Native.dll'
+$launcher = Join-Path $publishDirectory 'GdsPreview.App.exe'
 $nativeSmoke = Join-Path $repoRoot 'artifacts\NativeSmoke.exe'
 $localZig = Join-Path $repoRoot '.codex-tmp\zig\zig-x86_64-windows-0.15.2\zig.exe'
 $zig = if (Test-Path -LiteralPath $localZig) { $localZig } else {
@@ -74,6 +76,8 @@ $env:ZIG_GLOBAL_CACHE_DIR = (New-Item -ItemType Directory -Force (Join-Path $rep
 $env:ZIG_LOCAL_CACHE_DIR = (New-Item -ItemType Directory -Force (Join-Path $repoRoot '.codex-tmp\zig-local-cache')).FullName
 & $zig c++ -target x86_64-windows-gnu -std=c++17 -O2 -shared $nativeSource $nativeDefinition -o $nativeDll -lole32 -luuid -luser32 -lgdi32
 if ($LASTEXITCODE -ne 0) { throw 'Native handler build failed.' }
+& $zig c++ -target x86_64-windows-gnu -std=c++17 -O2 -municode $launcherSource -o $launcher -lshell32 -luser32
+if ($LASTEXITCODE -ne 0) { throw 'Native launcher build failed.' }
 & $zig c++ -target x86_64-windows-gnu -std=c++17 -O2 -municode $nativeSmokeSource -o $nativeSmoke -lole32 -luuid -luser32 -lgdi32
 if ($LASTEXITCODE -ne 0) { throw 'Native smoke-host build failed.' }
 & $nativeSmoke $nativeDll $sampleFile $smokeImage 4000

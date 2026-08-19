@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:desktop2="http://schemas.microsoft.com/appx/manifest/desktop/windows10/2"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap desktop2 com rescap">
+
+  <Identity
+    Name="@@IDENTITY_NAME@@"
+    Publisher="@@PUBLISHER@@"
+    Version="@@VERSION@@"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>GDS Preview for Windows Explorer</DisplayName>
+    <PublisherDisplayName>@@PUBLISHER_DISPLAY_NAME@@</PublisherDisplayName>
+    <Description>Preview GDSII layout files directly in Windows Explorer.</Description>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Dependencies>
+    <TargetDeviceFamily
+      Name="Windows.Desktop"
+      MinVersion="10.0.17763.0"
+      MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Applications>
+    <Application
+      Id="GdsPreview"
+      Executable="GdsPreview.App.exe"
+      EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="GDS Preview for Windows Explorer"
+        Description="Preview GDSII layout files directly in Windows Explorer."
+        BackgroundColor="#111827"
+        Square44x44Logo="Assets\Square44x44Logo.png"
+        Square150x150Logo="Assets\Square150x150Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+      </uap:VisualElements>
+
+      <Extensions>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation
+            Name="gdsii-layout"
+            desktop2:AllowSilentDefaultTakeOver="true">
+            <uap:DisplayName>GDSII layout</uap:DisplayName>
+            <uap:InfoTip>GDSII integrated-circuit layout</uap:InfoTip>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.gds</uap:FileType>
+              <uap:FileType>.gdsii</uap:FileType>
+            </uap:SupportedFileTypes>
+            <desktop2:DesktopPreviewHandler
+              Clsid="87F8A6BB-6B13-4A41-9D54-EEB39DBD1D6E"
+              EnableShareDenyNone="true" />
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:SurrogateServer
+              AppId="105B23B8-9A22-4D54-94E7-57DD03B8BA8B"
+              DisplayName="GDS Preview for Windows Explorer"
+              SystemSurrogate="PreviewHost">
+              <com:Class
+                Id="87F8A6BB-6B13-4A41-9D54-EEB39DBD1D6E"
+                Path="GdsPreview.Native.dll"
+                ThreadingModel="STA"
+                DisplayName="GDS Preview for Windows Explorer" />
+            </com:SurrogateServer>
+          </com:ComServer>
+        </com:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>
