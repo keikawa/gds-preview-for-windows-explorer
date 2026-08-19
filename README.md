@@ -4,6 +4,20 @@ Preview `.gds` and `.gdsii` layout files directly in the Windows Explorer previe
 
 ![GDSII preview in Windows Explorer](https://github.com/user-attachments/assets/5471cd90-893c-45f6-a198-6b6ad712e110)
 
+## Install a release
+
+1. Download `GDS-Preview-for-Windows-Explorer-<version>-x64.zip` from
+   [Releases](https://github.com/keikawa/gds-preview-for-windows-explorer/releases).
+2. Right-click the downloaded ZIP, open **Properties**, select **Unblock** if shown, and extract it.
+3. Run `install.cmd`. The default installation applies only to the current user.
+4. Close all Explorer windows, reopen Explorer, and enable the preview pane with `Alt+P`.
+
+Run `uninstall.cmd` from the same package to remove it.
+
+Files marked as downloaded from the Internet may show Windows' security warning instead of a
+preview. This is Mark of the Web behavior enforced by Explorer before the preview handler starts.
+For a trusted GDS file, use **Properties > Unblock**.
+
 ## Features
 
 - GDSII `BOUNDARY`, `BOX`, `PATH`, `TEXT`, `SREF`, and `AREF`
@@ -21,20 +35,6 @@ GDSII.
 
 - Windows 10 or Windows 11, x64
 - [.NET 8 Desktop Runtime, x64](https://dotnet.microsoft.com/download/dotnet/8.0)
-
-## Install a release
-
-1. Download `GDS-Preview-for-Windows-Explorer-<version>-x64.zip` from
-   [Releases](https://github.com/keikawa/gds-preview-for-windows-explorer/releases).
-2. Right-click the downloaded ZIP, open **Properties**, select **Unblock** if shown, and extract it.
-3. Run `install.cmd`. The default installation applies only to the current user.
-4. Close all Explorer windows, reopen Explorer, and enable the preview pane with `Alt+P`.
-
-Run `uninstall.cmd` from the same package to remove it.
-
-Files marked as downloaded from the Internet may show Windows' security warning instead of a
-preview. This is Mark of the Web behavior enforced by Explorer before the preview handler starts.
-For a trusted GDS file, use **Properties > Unblock**.
 
 ## Build from source
 
