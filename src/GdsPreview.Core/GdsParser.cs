@@ -8,12 +8,11 @@ public sealed class GdsParserOptions
     public long MaximumFileBytes { get; init; } = 2L * 1024 * 1024 * 1024;
     public int MaximumRecords { get; init; } = 10_000_000;
     public int MaximumCells { get; init; } = 100_000;
-    public int MaximumStoredGeometryElements { get; init; } = 30_000;
-    public int MaximumStoredGeometryElementsPerCell { get; init; } = 4_000;
-    public int MaximumStoredPoints { get; init; } = 1_000_000;
+    public int MaximumStoredGeometryElements { get; init; } = 100_000;
+    public int MaximumStoredGeometryElementsPerCell { get; init; } = 100_000;
+    public int MaximumStoredPoints { get; init; } = 8_000_000;
     public int MaximumStoredReferences { get; init; } = 50_000;
-    public int MaximumStoredTextElements { get; init; } = 500;
-    public int MaximumPointsPerElement { get; init; } = 1_024;
+    public int MaximumStoredTextElements { get; init; } = 5_000;
 }
 
 public static class GdsParser
@@ -222,7 +221,7 @@ public static class GdsParser
                     break;
                 case RecordType.Xy:
                     var xyElement = RequireElement(element, type);
-                    (xyElement.Points, xyElement.Bounds) = ReadPoints(payload, options.MaximumPointsPerElement);
+                    (xyElement.Points, xyElement.Bounds) = ReadPoints(payload);
                     break;
                 case RecordType.EndEl:
                     var cell = RequireCell(currentCell, type);
@@ -360,13 +359,12 @@ public static class GdsParser
         return BinaryPrimitives.ReadInt16BigEndian(payload);
     }
 
-    private static (List<PointD> Points, BoundsD Bounds) ReadPoints(byte[] payload, int maximumRetainedPoints)
+    private static (List<PointD> Points, BoundsD Bounds) ReadPoints(byte[] payload)
     {
         if (payload.Length == 0 || payload.Length % 8 != 0)
             throw new GdsFormatException("An XY record has an invalid size.");
         var pointCount = payload.Length / 8;
-        var stride = Math.Max(1, (int)Math.Ceiling(pointCount / (double)Math.Max(2, maximumRetainedPoints)));
-        var points = new List<PointD>(Math.Min(pointCount, maximumRetainedPoints + 2));
+        var points = new List<PointD>(pointCount);
         var bounds = BoundsD.Empty;
         PointD lastPoint = default;
         for (var index = 0; index < pointCount; index++)
@@ -376,11 +374,8 @@ public static class GdsParser
             var y = BinaryPrimitives.ReadInt32BigEndian(payload.AsSpan(offset + 4, 4));
             lastPoint = new PointD(x, y);
             bounds = bounds.Include(lastPoint);
-            if (index == 0 || index % stride == 0)
-                points.Add(lastPoint);
-        }
-        if (points.Count == 0 || points[^1] != lastPoint)
             points.Add(lastPoint);
+        }
         return (points, bounds);
     }
 

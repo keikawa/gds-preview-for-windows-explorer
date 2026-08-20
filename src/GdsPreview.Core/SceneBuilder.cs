@@ -2,11 +2,11 @@ namespace GdsPreview.Core;
 
 public sealed class SceneBuildOptions
 {
-    public int MaximumPrimitives { get; init; } = 8_000;
+    public int MaximumPrimitives { get; init; } = 100_000;
     public int MaximumInstances { get; init; } = 8_000;
     public int MaximumDepth { get; init; } = 48;
     public int MaximumTextLabels { get; init; } = 200;
-    public int MaximumPoints { get; init; } = 300_000;
+    public int MaximumPoints { get; init; } = 8_000_000;
     public int MaximumOverviewCells { get; init; } = 16;
 }
 

@@ -73,6 +73,23 @@ public static class DemoGdsWriter
         Record(stream, 0x04, 0x00);
     }
 
+    public static void WriteHighVertexPolygon(Stream stream)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        Record(stream, 0x00, 0x02, Int16(600));
+        Record(stream, 0x01, 0x02, Dates());
+        Record(stream, 0x02, 0x06, Ascii("GDS_PREVIEW_HIGH_VERTEX"));
+        Record(stream, 0x03, 0x05, Real8(0.001), Real8(1e-9));
+        BeginStructure(stream, "TOP");
+        var points = new List<(int X, int Y)>();
+        for (var x = 0; x < 1_100; x++) points.Add((x, x % 2));
+        for (var x = 1_099; x >= 0; x--) points.Add((x, 100 + x % 2));
+        points.Add(points[0]);
+        Boundary(stream, 1, 0, points);
+        Record(stream, 0x07, 0x00);
+        Record(stream, 0x04, 0x00);
+    }
+
     private static void BeginStructure(Stream stream, string name)
     {
         Record(stream, 0x05, 0x02, Dates());
