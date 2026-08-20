@@ -93,44 +93,48 @@ internal static class BitmapSceneRenderer
 
         graphics.SmoothingMode = primitives.Count < 2_000 ? SmoothingMode.AntiAlias : SmoothingMode.None;
         graphics.PixelOffsetMode = PixelOffsetMode.Half;
-        foreach (var primitive in primitives)
+        var graphicsState = graphics.Save();
+        graphics.SetClip(viewport, CombineMode.Intersect);
+        try
         {
-            var color = LayerColor(primitive.Layer, primitive.DataType);
-            switch (primitive)
+            foreach (var primitive in primitives)
             {
-                case ScenePolygon polygon when polygon.Points.Count >= 3:
+                var color = LayerColor(primitive.Layer, primitive.DataType);
+                switch (primitive)
                 {
-                    var points = polygon.Points.Select(Map).ToArray();
-                    using var fill = new SolidBrush(Color.FromArgb(82, color));
-                    graphics.FillPolygon(fill, points, FillMode.Alternate);
-                    if (primitives.Count < 4_000)
+                    case ScenePolygon polygon when polygon.Points.Count >= 3:
                     {
-                        using var pen = new Pen(Color.FromArgb(190, color), 1f);
+                        var points = polygon.Points.Select(Map).ToArray();
+                        using var fill = new SolidBrush(Color.FromArgb(82, color));
+                        graphics.FillPolygon(fill, points, FillMode.Alternate);
+                        using var pen = new Pen(Color.FromArgb(210, color), 1f)
+                        {
+                            LineJoin = LineJoin.Miter
+                        };
                         graphics.DrawPolygon(pen, points);
+                        break;
                     }
-                    break;
-                }
-                case ScenePath path when path.Points.Count >= 2:
-                {
-                    var points = path.Points.Select(Map).ToArray();
-                    var penWidth = path.Width <= 0 ? 1f : (float)Math.Clamp(path.Width * scale, 1, 30);
-                    using var pen = new Pen(Color.FromArgb(220, color), penWidth)
+                    case ScenePath path when path.Points.Count >= 2:
                     {
-                        LineJoin = LineJoin.Miter,
-                        StartCap = LineCap.Flat,
-                        EndCap = LineCap.Flat
-                    };
-                    graphics.DrawLines(pen, points);
-                    break;
-                }
-                case SceneText text when !string.IsNullOrEmpty(text.Value):
-                {
-                    using var brush = new SolidBrush(Color.FromArgb(215, color));
-                    using var font = new Font("Segoe UI", Math.Clamp((float)(text.Size * scale * 0.15), 6f, 14f));
-                    graphics.DrawString(text.Value, font, brush, Map(text.Origin));
-                    break;
+                        var points = path.Points.Select(Map).ToArray();
+                        var penWidth = path.Width <= 0 ? 1f : (float)Math.Clamp(path.Width * scale, 1, 30);
+                        using var pen = new Pen(Color.FromArgb(220, color), penWidth)
+                        {
+                            LineJoin = LineJoin.Miter,
+                            StartCap = LineCap.Flat,
+                            EndCap = LineCap.Flat
+                        };
+                        graphics.DrawLines(pen, points);
+                        break;
+                    }
+                    case SceneText:
+                        break;
                 }
             }
+        }
+        finally
+        {
+            graphics.Restore(graphicsState);
         }
     }
 

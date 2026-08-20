@@ -13,6 +13,7 @@ internal static class Program
         ("applies reference transform", AppliesReferenceTransform),
         ("rejects truncated data", RejectsTruncatedData),
         ("accepts padding after ENDLIB", AcceptsPaddingAfterEndLib),
+        ("preserves every vertex in a large polygon", PreservesEveryVertexInLargePolygon),
         ("honors primitive safety limit", HonorsPrimitiveSafetyLimit),
         ("bounds memory for large flat layout", BoundsMemoryForLargeFlatLayout)
     ];
@@ -119,20 +120,33 @@ internal static class Program
         True(scene.WasTruncated, "A limited scene must report truncation.");
     }
 
+    private static void PreservesEveryVertexInLargePolygon()
+    {
+        using var stream = new MemoryStream();
+        DemoGdsWriter.WriteHighVertexPolygon(stream);
+        stream.Position = 0;
+        var document = GdsParser.Parse(stream);
+        var polygon = (GdsPolygon)document.Cells["TOP"].Elements.Single();
+        Equal(2_200, polygon.Points.Count);
+        Equal(new PointD(1_023, 1), polygon.Points[1_023]);
+        Equal(new PointD(1_024, 0), polygon.Points[1_024]);
+        Equal(new PointD(0, 100), polygon.Points[^1]);
+    }
+
     private static void BoundsMemoryForLargeFlatLayout()
     {
         using var stream = new MemoryStream();
-        DemoGdsWriter.WriteLargeFlat(stream, 100_000);
+        DemoGdsWriter.WriteLargeFlat(stream, 100_001);
         stream.Position = 0;
         var document = GdsParser.Parse(stream);
         var cell = document.Cells["TOP"];
-        Equal(100_000, cell.SourceElementCount);
-        Equal(4_000, cell.Elements.Count);
-        Equal(96_000, cell.SkippedElementCount);
+        Equal(100_001, cell.SourceElementCount);
+        Equal(100_000, cell.Elements.Count);
+        Equal(1, cell.SkippedElementCount);
         True(document.WasSimplified, "Large geometry should be marked as simplified.");
 
         var scene = SceneBuilder.Build(document);
-        True(scene.Primitives.Count <= 8_000, "Scene primitive limit was exceeded.");
+        True(scene.Primitives.Count <= 100_000, "Scene primitive limit was exceeded.");
         True(scene.WasTruncated, "Simplified scene should report truncation.");
         True(scene.Bounds.Width > 19_000, "Skipped geometry bounds should cover the whole layout.");
     }
