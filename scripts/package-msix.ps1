@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+\.\d+$')]
-    [string]$Version = '0.1.0.0',
+    [string]$Version = '0.1.1.0',
     [ValidatePattern('^[A-Za-z0-9.-]{3,50}$')]
     [string]$IdentityName = 'keikawa.GDSPreviewforWindowsExplorer',
     [string]$Publisher = 'CN=915278F7-D39C-4A79-8E88-5A30F45250CB',
@@ -152,7 +152,7 @@ $configFile = Join-Path $repoRoot 'packaging\NuGet.Msix.Config'
 & $dotnet restore $rendererProject --configfile $configFile -p:Platform=x64 -r win-x64
 if ($LASTEXITCODE -ne 0) { throw 'Self-contained renderer restore failed.' }
 & $dotnet publish $rendererProject -c $configuration -p:Platform=x64 -r win-x64 --self-contained true --no-restore `
-    -p:DebugType=None -p:DebugSymbols=false -o $rendererPublish
+    -p:DebugType=None -p:DebugSymbols=false "-p:PathMap=$repoRoot=/_/gds-preview" -o $rendererPublish
 if ($LASTEXITCODE -ne 0) { throw 'Self-contained renderer publish failed.' }
 
 Get-ChildItem -LiteralPath $rendererPublish -File |
@@ -165,6 +165,7 @@ $launcherSource = Join-Path $repoRoot 'native\GdsPreview.App.cpp'
 $launcher = Join-Path $staging 'GdsPreview.App.exe'
 & $zig c++ -target x86_64-windows-gnu -std=c++17 -O2 -municode $launcherSource -o $launcher -lshell32 -luser32
 if ($LASTEXITCODE -ne 0) { throw 'MSIX launcher build failed.' }
+Remove-Item -LiteralPath ([System.IO.Path]::ChangeExtension($launcher, '.pdb')) -Force -ErrorAction SilentlyContinue
 
 New-PackageLogo (Join-Path $staging 'Assets\StoreLogo.png') 50 50 $false
 New-PackageLogo (Join-Path $staging 'Assets\Square44x44Logo.png') 44 44 $false

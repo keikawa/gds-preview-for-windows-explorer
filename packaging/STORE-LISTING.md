@@ -18,8 +18,8 @@ GDS Preview for Windows Explorer adds fast, local previews for `.gds` and `.gdsi
 circuit layout files to the Windows Explorer preview pane.
 
 Select a GDSII file in Explorer and press Alt+P to inspect its geometry without opening a full
-layout editor. The preview supports cell hierarchy, references, arrays, transformations, text,
-paths, boxes, and boundaries. Multiple top-level cells are shown in a tiled overview.
+layout editor. The preview supports cell hierarchy, references, arrays, transformations, paths,
+boxes, and boundaries. Multiple top-level cells are shown in a tiled overview.
 
 Parsing and rendering run in a separate, time-limited process to protect Explorer from malformed
 or unusually complex files. Files remain on the device: the app has no telemetry, advertising,
@@ -31,7 +31,7 @@ GDSII is supported. OASIS files are not supported.
 
 - Explorer preview-pane integration for `.gds` and `.gdsii`
 - Hierarchical cells, SREF, AREF, rotation, reflection, and magnification
-- BOUNDARY, BOX, PATH, and TEXT geometry
+- BOUNDARY, BOX, and PATH geometry
 - Layer and datatype coloring
 - Multiple-top-cell overview
 - Isolated renderer with conservative complexity and time limits
@@ -42,6 +42,12 @@ GDSII is supported. OASIS files are not supported.
 - Website: https://github.com/keikawa/gds-preview-for-windows-explorer
 - Support: https://github.com/keikawa/gds-preview-for-windows-explorer/issues
 - Privacy policy: https://github.com/keikawa/gds-preview-for-windows-explorer/blob/main/PRIVACY.md
+
+## What's new in 0.1.1.0
+
+Improved previews for dense and high-vertex GDSII layouts. Fine structures remain visible at
+overview scale, and complete polygon vertex sequences are now preserved to prevent incorrect
+diagonal edges and distorted geometry.
 
 ## Search terms
 
