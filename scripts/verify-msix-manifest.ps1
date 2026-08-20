@@ -67,6 +67,31 @@ if ($VerifyPayload) {
             throw "MSIX payload is missing $relativePath."
         }
     }
+
+    $debugFiles = @(Get-ChildItem -LiteralPath $payloadRoot -Recurse -File -Filter '*.pdb')
+    if ($debugFiles.Count -gt 0) {
+        throw "MSIX payload must not contain debug symbols: $($debugFiles.Name -join ', ')"
+    }
+
+    $allowedLayout = [System.IO.Path]::GetFullPath((Join-Path $payloadRoot 'Samples\demo.gds'))
+    $unexpectedLayouts = @(Get-ChildItem -LiteralPath $payloadRoot -Recurse -File |
+        Where-Object { $_.Extension -in '.gds', '.gdsii', '.oas' -and $_.FullName -ne $allowedLayout })
+    if ($unexpectedLayouts.Count -gt 0) {
+        throw "MSIX payload contains an unexpected layout file: $($unexpectedLayouts.Name -join ', ')"
+    }
+
+    $allowedImages = @(
+        'Assets\StoreLogo.png',
+        'Assets\Square44x44Logo.png',
+        'Assets\Square150x150Logo.png',
+        'Assets\Wide310x150Logo.png'
+    ) | ForEach-Object { [System.IO.Path]::GetFullPath((Join-Path $payloadRoot $_)) }
+    $unexpectedImages = @(Get-ChildItem -LiteralPath $payloadRoot -Recurse -File |
+        Where-Object { $_.Extension -in '.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff' -and
+            $_.FullName -notin $allowedImages })
+    if ($unexpectedImages.Count -gt 0) {
+        throw "MSIX payload contains an unexpected image file: $($unexpectedImages.Name -join ', ')"
+    }
 }
 
 Write-Host "MSIX manifest verified: $ManifestPath" -ForegroundColor Green

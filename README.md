@@ -62,7 +62,7 @@ Create a self-contained x64 MSIX for Microsoft Store submission:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\package-msix.ps1 `
-  -Version 0.1.0.0
+  -Version 0.1.1.0
 ```
 
 This requires the Windows 10/11 SDK in addition to the normal build dependencies. Store identity,
