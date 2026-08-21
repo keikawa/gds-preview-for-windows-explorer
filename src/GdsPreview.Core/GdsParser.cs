@@ -8,8 +8,8 @@ public sealed class GdsParserOptions
     public long MaximumFileBytes { get; init; } = 2L * 1024 * 1024 * 1024;
     public int MaximumRecords { get; init; } = 10_000_000;
     public int MaximumCells { get; init; } = 100_000;
-    public int MaximumStoredGeometryElements { get; init; } = 100_000;
-    public int MaximumStoredGeometryElementsPerCell { get; init; } = 100_000;
+    public int MaximumStoredGeometryElements { get; init; } = 300_000;
+    public int MaximumStoredGeometryElementsPerCell { get; init; } = 300_000;
     public int MaximumStoredPoints { get; init; } = 8_000_000;
     public int MaximumStoredReferences { get; init; } = 50_000;
     public int MaximumStoredTextElements { get; init; } = 5_000;

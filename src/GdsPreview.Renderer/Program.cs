@@ -14,8 +14,7 @@ internal static class Program
             var options = ParseArguments(args);
             shared = new SharedPreview(options.MappingHandle, options.Width, options.Height);
             var document = GdsParser.ParseFile(options.FilePath);
-            var scene = SceneBuilder.Build(document);
-            using var bitmap = BitmapSceneRenderer.Render(scene, options.Width, options.Height);
+            using var bitmap = HierarchicalBitmapRenderer.Render(document, options.Width, options.Height);
             var rectangle = new Rectangle(0, 0, bitmap.Width, bitmap.Height);
             var data = bitmap.LockBits(rectangle, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
             try { shared.CopyPixels(data.Scan0, data.Stride); }

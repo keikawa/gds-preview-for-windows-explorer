@@ -43,11 +43,12 @@ GDSII is supported. OASIS files are not supported.
 - Support: https://github.com/keikawa/gds-preview-for-windows-explorer/issues
 - Privacy policy: https://github.com/keikawa/gds-preview-for-windows-explorer/blob/main/PRIVACY.md
 
-## What's new in 0.1.1.0
+## What's new in 0.2.0.0
 
-Improved previews for dense and high-vertex GDSII layouts. Fine structures remain visible at
-overview scale, and complete polygon vertex sequences are now preserved to prevent incorrect
-diagonal edges and distorted geometry.
+Introduced hierarchical cached rendering for dense GDSII layouts. Repeated cells and arrays now
+remain complete without flattening millions of instances, and multiple top-level cells are rendered
+without per-panel geometry loss. Fine structures remain visible at overview scale, while complete
+polygon vertex sequences prevent incorrect diagonal edges and distorted geometry.
 
 ## Search terms
 

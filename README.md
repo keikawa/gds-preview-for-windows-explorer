@@ -4,7 +4,14 @@ Preview `.gds` and `.gdsii` layout files directly in the Windows Explorer previe
 
 ![GDSII preview in Windows Explorer](https://github.com/user-attachments/assets/5471cd90-893c-45f6-a198-6b6ad712e110)
 
-## Install a release
+## Install from Microsoft Store
+
+**[Get GDS Preview for Windows Explorer from Microsoft Store](https://apps.microsoft.com/detail/9nm0tj3pnk6j?cid=DevShareMCLPCS)**
+
+This is the recommended installation method. Microsoft Store installs the self-contained app and
+delivers future updates automatically.
+
+## Install a GitHub release manually
 
 1. Download `GDS-Preview-for-Windows-Explorer-<version>-x64.zip` from
    [Releases](https://github.com/keikawa/gds-preview-for-windows-explorer/releases).
@@ -20,7 +27,7 @@ For a trusted GDS file, use **Properties > Unblock**.
 
 ## Features
 
-- GDSII `BOUNDARY`, `BOX`, `PATH`, `TEXT`, `SREF`, and `AREF`
+- GDSII `BOUNDARY`, `BOX`, `PATH`, `SREF`, and `AREF`
 - Cell hierarchy, translation, rotation, magnification, reflection, and arrays
 - Automatic single-top-cell display and tiled overview for multiple top-level cells
 - Layer/datatype coloring
@@ -34,7 +41,9 @@ GDSII.
 ## Requirements
 
 - Windows 10 or Windows 11, x64
-- [.NET 8 Desktop Runtime, x64](https://dotnet.microsoft.com/download/dotnet/8.0)
+- The Microsoft Store package is self-contained.
+- Manual GitHub release installation requires the
+  [.NET 8 Desktop Runtime, x64](https://dotnet.microsoft.com/download/dotnet/8.0).
 
 ## Build from source
 
@@ -55,14 +64,14 @@ written under `artifacts\GdsPreview`.
 Create a release ZIP after a successful build:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1 -Version 0.1.0-beta.1
+powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1 -Version 0.2.0
 ```
 
 Create a self-contained x64 MSIX for Microsoft Store submission:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\package-msix.ps1 `
-  -Version 0.1.1.0
+  -Version 0.2.0.0
 ```
 
 This requires the Windows 10/11 SDK in addition to the normal build dependencies. Store identity,
@@ -71,9 +80,9 @@ sideload signing, certification, and test instructions are in
 
 ## Architecture
 
-- `src/GdsPreview.Core` — dependency-free GDSII parser and hierarchical scene builder
+- `src/GdsPreview.Core` — dependency-free GDSII parser and cell hierarchy model
 - `native/GdsPreview.Native.cpp` — minimal native COM preview handler loaded by `prevhost.exe`
-- `src/GdsPreview.Renderer` — isolated .NET rasterizer process
+- `src/GdsPreview.Renderer` — isolated .NET hierarchical cached rasterizer process
 - `tests/GdsPreview.Core.Tests` — regression and load tests without an external test framework
 - `tools/GdsPreview.Sample` — deterministic GDSII sample generator
 - `scripts` — build, package, install, verification, and uninstall commands
@@ -89,17 +98,16 @@ Defaults are intentionally conservative to protect Explorer:
 
 - File size: 2 GiB
 - GDSII records: 10,000,000
-- Retained geometry: 30,000 total and 4,000 per cell
-- Retained vertices: 1,000,000 while parsing and 300,000 after hierarchy expansion
-- Rendered primitives: 8,000
-- Expanded instances: 8,000
-- Hierarchy depth: 48
-- Text labels: 200
-- Independent top-level cells in an overview: 16
+- Cells: 100,000
+- Retained geometry: 300,000 total and per cell
+- Retained vertices: 8,000,000
+- References: 50,000
+- Text records: 5,000
+- Cached cell rasters: 32,000,000 pixels total, up to 4096 pixels per dimension
 - Renderer time: 6 seconds
 
-Large arrays are sampled. Omitted cell geometry is represented by its bounds, and the status line
-shows `simplified` whenever limits affected the preview.
+Repeated cells and arrays are rendered from cached cell rasters instead of flattening every
+instance. The status line shows `simplified` whenever parser retention limits affected the preview.
 
 ## License
 
