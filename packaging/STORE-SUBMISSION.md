@@ -26,10 +26,10 @@ Build the submission package with:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\package-msix.ps1 `
-  -Version 0.1.1.0
+  -Version 0.2.0.0
 ```
 
-The output is `artifacts\msix\GDS-Preview-for-Windows-Explorer-0.1.1.0-x64.msix`. The package is
+The output is `artifacts\msix\GDS-Preview-for-Windows-Explorer-0.2.0.0-x64.msix`. The package is
 left unsigned for Partner Center, which signs the certified package.
 
 MSIX versions have four numeric parts, each from 0 through 65535. Prerelease suffixes such as
@@ -45,7 +45,7 @@ manifest Publisher. If the certificate is already in the current user's certific
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\package-msix.ps1 `
-  -Version 0.1.1.0 `
+  -Version 0.2.0.0 `
   -CertificateThumbprint '<certificate SHA-1 thumbprint>'
 ```
 

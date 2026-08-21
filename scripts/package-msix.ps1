@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+\.\d+$')]
-    [string]$Version = '0.1.1.0',
+    [string]$Version = '0.2.0.0',
     [ValidatePattern('^[A-Za-z0-9.-]{3,50}$')]
     [string]$IdentityName = 'keikawa.GDSPreviewforWindowsExplorer',
     [string]$Publisher = 'CN=915278F7-D39C-4A79-8E88-5A30F45250CB',

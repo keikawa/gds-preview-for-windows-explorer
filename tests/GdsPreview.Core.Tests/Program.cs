@@ -138,7 +138,11 @@ internal static class Program
         using var stream = new MemoryStream();
         DemoGdsWriter.WriteLargeFlat(stream, 100_001);
         stream.Position = 0;
-        var document = GdsParser.Parse(stream);
+        var document = GdsParser.Parse(stream, options: new GdsParserOptions
+        {
+            MaximumStoredGeometryElements = 100_000,
+            MaximumStoredGeometryElementsPerCell = 100_000
+        });
         var cell = document.Cells["TOP"];
         Equal(100_001, cell.SourceElementCount);
         Equal(100_000, cell.Elements.Count);
