@@ -43,12 +43,12 @@ GDSII is supported. OASIS files are not supported.
 - Support: https://github.com/keikawa/gds-preview-for-windows-explorer/issues
 - Privacy policy: https://github.com/keikawa/gds-preview-for-windows-explorer/blob/main/PRIVACY.md
 
-## What's new in 0.2.0.0
+## What's new in 0.2.1.0
 
-Introduced hierarchical cached rendering for dense GDSII layouts. Repeated cells and arrays now
-remain complete without flattening millions of instances, and multiple top-level cells are rendered
-without per-panel geometry loss. Fine structures remain visible at overview scale, while complete
-polygon vertex sequences prevent incorrect diagonal edges and distorted geometry.
+Updated the app icon across the Microsoft Store and Windows package. This release also includes
+hierarchical cached rendering for dense GDSII layouts: repeated cells, arrays, and multiple top-level
+cells remain complete without flattening millions of instances. Fine structures remain visible at
+overview scale, while complete polygon vertex sequences prevent incorrect diagonal edges.
 
 ## Search terms
 
@@ -86,5 +86,7 @@ The app does not collect data and does not use the network. GDSII files are pars
 ## Assets still entered in Partner Center
 
 - Use `docs/images/demo-preview.png` as the source for the Store screenshot.
+- Use `docs/images/store-logo-300x300.png`, `store-logo-150x150.png`, and
+  `store-logo-71x71.png` for the matching Microsoft Store display-image fields.
 - Package logos are generated during the MSIX build under `artifacts/msix/staging/Assets`.
 - Add English and Japanese Store listings if both languages will be supported at launch.

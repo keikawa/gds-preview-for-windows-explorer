@@ -41,7 +41,7 @@ jobs:
           $version = if ($env:GITHUB_REF_TYPE -eq 'tag') {
             $env:GITHUB_REF_NAME -replace '^v', ''
           } else {
-            '0.2.0-ci'
+            '0.2.1-ci'
           }
           "version=$version" >> $env:GITHUB_OUTPUT
 

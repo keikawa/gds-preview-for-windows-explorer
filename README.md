@@ -2,6 +2,8 @@
 
 Preview `.gds` and `.gdsii` layout files directly in the Windows Explorer preview pane.
 
+<img src="docs/images/store-logo-150x150.png" alt="GDS Preview for Windows Explorer icon" width="128">
+
 ![GDSII preview in Windows Explorer](https://github.com/user-attachments/assets/5471cd90-893c-45f6-a198-6b6ad712e110)
 
 ## Install from Microsoft Store
@@ -64,14 +66,14 @@ written under `artifacts\GdsPreview`.
 Create a release ZIP after a successful build:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1 -Version 0.2.0
+powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1 -Version 0.2.1
 ```
 
 Create a self-contained x64 MSIX for Microsoft Store submission:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\package-msix.ps1 `
-  -Version 0.2.0.0
+  -Version 0.2.1.0
 ```
 
 This requires the Windows 10/11 SDK in addition to the normal build dependencies. Store identity,
