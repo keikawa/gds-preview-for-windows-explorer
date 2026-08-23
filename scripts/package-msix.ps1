@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+\.\d+$')]
-    [string]$Version = '0.2.0.0',
+    [string]$Version = '0.2.1.0',
     [ValidatePattern('^[A-Za-z0-9.-]{3,50}$')]
     [string]$IdentityName = 'keikawa.GDSPreviewforWindowsExplorer',
     [string]$Publisher = 'CN=915278F7-D39C-4A79-8E88-5A30F45250CB',
@@ -55,39 +55,28 @@ function Escape-Xml([string]$value) {
     return [System.Security.SecurityElement]::Escape($value)
 }
 
-function New-PackageLogo([string]$path, [int]$width, [int]$height, [bool]$includeText) {
+function New-PackageLogo([string]$sourcePath, [string]$path, [int]$width, [int]$height,
+    [bool]$includeText) {
     Add-Type -AssemblyName System.Drawing
+    $source = [System.Drawing.Image]::FromFile($sourcePath)
     $bitmap = [System.Drawing.Bitmap]::new($width, $height, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     try {
         $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $graphics.Clear([System.Drawing.Color]::FromArgb(255, 17, 24, 39))
-        $scale = [Math]::Min($width, $height)
-        $margin = [Math]::Max(3, [int]($scale * 0.16))
-        $lineWidth = [Math]::Max(2, [int]($scale * 0.065))
-        $cyan = [System.Drawing.Pen]::new([System.Drawing.Color]::FromArgb(255, 56, 189, 248), $lineWidth)
-        $green = [System.Drawing.Pen]::new([System.Drawing.Color]::FromArgb(255, 52, 211, 153), $lineWidth)
-        try {
-            $cyan.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
-            $green.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
-            $iconLeft = if ($width -gt $height) { $margin } else { $margin }
-            $iconSize = $scale - 2 * $margin
-            $graphics.DrawRectangle($cyan, $iconLeft, $margin, $iconSize, $iconSize)
-            $offset = [Math]::Max(3, [int]($iconSize * 0.22))
-            $inner = $iconSize - $offset * 2
-            $graphics.DrawRectangle($green, $iconLeft + $offset, $margin + $offset, $inner, $inner)
-            $graphics.DrawLine($green, $iconLeft + $offset, $margin + $iconSize - $offset, $iconLeft + $iconSize - $offset, $margin + $offset)
-        } finally {
-            $cyan.Dispose()
-            $green.Dispose()
-        }
+        $graphics.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceOver
+        $graphics.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+        $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
 
         if ($includeText -and $width -gt $height) {
+            $graphics.Clear([System.Drawing.Color]::FromArgb(255, 17, 24, 39))
+            $iconSize = $height - 16
+            $graphics.DrawImage($source, 8, 8, $iconSize, $iconSize)
             $fontSize = [Math]::Max(12, [single]($height * 0.19))
             $font = [System.Drawing.Font]::new('Segoe UI Semibold', $fontSize, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
             $brush = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::White)
             try {
-                $textX = $scale + [int]($height * 0.12)
+                $textX = $iconSize + 22
                 $textRect = [System.Drawing.RectangleF]::new($textX, 0, $width - $textX, $height)
                 $format = [System.Drawing.StringFormat]::new()
                 try {
@@ -99,11 +88,15 @@ function New-PackageLogo([string]$path, [int]$width, [int]$height, [bool]$includ
                 $font.Dispose()
                 $brush.Dispose()
             }
+        } else {
+            $graphics.Clear([System.Drawing.Color]::Transparent)
+            $graphics.DrawImage($source, 0, 0, $width, $height)
         }
         $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
     } finally {
         $graphics.Dispose()
         $bitmap.Dispose()
+        $source.Dispose()
     }
 }
 
@@ -167,10 +160,17 @@ $launcher = Join-Path $staging 'GdsPreview.App.exe'
 if ($LASTEXITCODE -ne 0) { throw 'MSIX launcher build failed.' }
 Remove-Item -LiteralPath ([System.IO.Path]::ChangeExtension($launcher, '.pdb')) -Force -ErrorAction SilentlyContinue
 
-New-PackageLogo (Join-Path $staging 'Assets\StoreLogo.png') 50 50 $false
-New-PackageLogo (Join-Path $staging 'Assets\Square44x44Logo.png') 44 44 $false
-New-PackageLogo (Join-Path $staging 'Assets\Square150x150Logo.png') 150 150 $false
-New-PackageLogo (Join-Path $staging 'Assets\Wide310x150Logo.png') 310 150 $true
+$smallLogoSource = Join-Path $repoRoot 'docs\images\store-logo-71x71.png'
+$largeLogoSource = Join-Path $repoRoot 'docs\images\store-logo-150x150.png'
+foreach ($logoSource in $smallLogoSource, $largeLogoSource) {
+    if (-not (Test-Path -LiteralPath $logoSource -PathType Leaf)) {
+        throw "Package logo source is missing: $logoSource"
+    }
+}
+New-PackageLogo $smallLogoSource (Join-Path $staging 'Assets\StoreLogo.png') 50 50 $false
+New-PackageLogo $smallLogoSource (Join-Path $staging 'Assets\Square44x44Logo.png') 44 44 $false
+New-PackageLogo $largeLogoSource (Join-Path $staging 'Assets\Square150x150Logo.png') 150 150 $false
+New-PackageLogo $largeLogoSource (Join-Path $staging 'Assets\Wide310x150Logo.png') 310 150 $true
 
 $manifestTemplate = Get-Content -LiteralPath (Join-Path $repoRoot 'packaging\AppxManifest.xml.template') -Raw
 $manifestText = $manifestTemplate.Replace('@@IDENTITY_NAME@@', (Escape-Xml $IdentityName))
