@@ -28,11 +28,36 @@ internal static class Program
         ("arrays have identical coverage to individual references", RenderingTests.Arrays),
         ("path widths and caps are geometric", RenderingTests.Paths),
         ("sub-quantization geometry accumulates", RenderingTests.TinyGeometryAccumulates),
-        ("linear-light colors and translucent layers", RenderingTests.LinearLightColors)
+        ("linear-light colors and translucent layers", RenderingTests.LinearLightColors),
+        ("constant-time sRGB lookup preserves the exact quantizer", RenderingTests.ExactSrgbLookup),
+        ("layout outlines stay inside true coverage", LayoutStyleTests.InwardOutline),
+        ("styled thin lines retain physical width and phase", LayoutStyleTests.ThinCoverage),
+        ("enclosing fills cannot erase later or earlier outlines", LayoutStyleTests.EnclosingFills),
+        ("hole bridges do not create diagonal outlines", LayoutStyleTests.HoleBridge),
+        ("clipping and reset do not create phantom outlines", LayoutStyleTests.ClippingAndReset),
+        ("real outlines remain visible at viewport edges", LayoutStyleTests.RealEdgesAtViewport),
+        ("half-pixel outlines preserve width across pixel phases", LayoutStyleTests.OutlineWidthAndPhase),
+        ("styled sub-quantization areas accumulate", LayoutStyleTests.TinyCoverageAccumulates),
+        ("streamed rows match independent clipping after reuse", LayoutStyleTests.StreamingRows),
+        ("rasterizer allocation excludes full-canvas scratch", LayoutStyleTests.BoundedAllocation),
+        ("fixed 256-color palette and RGB identity", LayerPaletteTests.FixedPalette),
+        ("stable layer/datatype mapping without short cycles", LayerPaletteTests.StableMapping),
+        ("rendered palette outline contrast on both canvases", LayerPaletteTests.CanvasContrast),
+        ("layer colors do not depend on document or traversal order", LayerPaletteTests.DocumentIndependence)
     ];
 
     private static int Main(string[] args)
     {
+        if (args.Length == 2 && args[0] == "--performance-review")
+        {
+            PerformanceReview.Run(args[1]);
+            return 0;
+        }
+        if (args.Length == 2 && args[0] == "--color-review")
+        {
+            ColorReview.Export(args[1]);
+            return 0;
+        }
         if (args.Length == 3 && args[0] == "--verify-preview")
         {
             using var actual = new Bitmap(args[2]);
@@ -224,16 +249,20 @@ internal static class Program
         // A bright-pixel threshold tested the old one-pixel outlines, not the data.
         // Integrate their signal instead (roughly 493 covered pixels).
         double signal = 0;
+        static double Luminance(Color c) => .2126 * SrgbColorSpace.Decode(c.R) +
+            .7152 * SrgbColorSpace.Decode(c.G) + .0722 * SrgbColorSpace.Decode(c.B);
+        var backgroundLuminance = Luminance(Color.FromArgb(24, 27, 32));
         for (var y = 0; y < bitmap.Height - 52; y++)
         for (var x = 0; x < bitmap.Width; x++)
         {
             var pixel = bitmap.GetPixel(x, y);
-            signal += Math.Max(SrgbColorSpace.Decode(pixel.R) - SrgbColorSpace.Decode(24),
-                Math.Max(SrgbColorSpace.Decode(pixel.G) - SrgbColorSpace.Decode(27),
-                    SrgbColorSpace.Decode(pixel.B) - SrgbColorSpace.Decode(32)));
+            signal += Luminance(pixel) - backgroundLuminance;
         }
-        var expectedSignal = 10_000 * Math.Pow(444.0 / 19_990 * 10, 2) *
-            HierarchicalBitmapRenderer.GeometryOpacity / 255.0 * (SrgbColorSpace.Decode(242) - SrgbColorSpace.Decode(27));
+        // Weight the retained geometry by its actual base colour; an HSV-specific
+        // fixed maximum channel (242) cannot measure signal for other palettes.
+        var expectedSignal = cell.Elements.OfType<GdsPolygon>().Sum(p =>
+            Luminance(HierarchicalBitmapRenderer.PaletteColor(p.Layer, p.DataType)) - backgroundLuminance) *
+            Math.Pow(444.0 / 19_990 * 10, 2) * LayoutCompositor.OutlineOpacity / 255.0;
         True(signal > expectedSignal * .75 && signal < expectedSignal * 1.05,
             $"Stored geometry has an unexpected integrated signal: {signal}.");
     }

@@ -5,54 +5,56 @@ using GdsPreview.Core;
 namespace GdsPreview.Renderer;
 
 /// <summary>
-/// Integrates polygon edges over the final pixel grid. There is no intermediate
-/// cell image, sample-point test, cosmetic outline, or minimum feature width.
-/// GDS boundaries are simple contours (including oppositely wound hole contours
-/// connected by a retraced bridge). Signed edge areas give their covered area.
+/// Analytical polygon coverage on the final grid. Row-local scratch is reused;
+/// no full-canvas coverage planes, supersampling, or minimum feature width.
 /// </summary>
 internal sealed class CoverageRasterizer
 {
-    private readonly int _width;
-    private readonly int _height;
-    private readonly float[] _red;
-    private readonly float[] _green;
-    private readonly float[] _blue;
-    private readonly double[] _area;
-    private readonly double[] _steps;
+    private readonly int _width, _height, _stride;
+    private readonly int[] _background;
+    private readonly int[] _starts;
+    private int[] _nextEdge = [];
+    private readonly double[] _area, _steps, _clipArea, _clipSteps;
+    private readonly double[][] _rows;
+    private readonly float[] _clippedRow;
+    private LayoutCompositor? _layout;
 
     public CoverageRasterizer(int width, int height, Color background)
     {
         _width = width;
         _height = height;
-        var length = checked(width * height);
-        _red = new float[length];
-        _green = new float[length];
-        _blue = new float[length];
-        _area = new double[length];
-        _steps = new double[length];
-        Array.Fill(_red, SrgbColorSpace.Decode(background.R));
-        Array.Fill(_green, SrgbColorSpace.Decode(background.G));
-        Array.Fill(_blue, SrgbColorSpace.Decode(background.B));
+        _stride = checked(width + 2);
+        _background = new int[checked(width * height)];
+        Array.Fill(_background, background.ToArgb());
+        _starts = new int[checked(height + 2)];
+        _area = new double[_stride];
+        _steps = new double[_stride];
+        _clipArea = new double[_stride];
+        _clipSteps = new double[_stride];
+        _rows = [new double[_stride], new double[_stride], new double[_stride]];
+        _clippedRow = new float[_stride];
     }
 
     public void FillBackground(RectangleF rectangle, Color color)
     {
-        var red = SrgbColorSpace.Decode(color.R);
-        var green = SrgbColorSpace.Decode(color.G);
-        var blue = SrgbColorSpace.Decode(color.B);
         for (var y = Math.Max(0, (int)Math.Floor(rectangle.Top)); y < Math.Min(_height, rectangle.Bottom); y++)
         for (var x = Math.Max(0, (int)Math.Floor(rectangle.Left)); x < Math.Min(_width, rectangle.Right); x++)
         {
             var index = y * _width + x;
-            _red[index] = red;
-            _green[index] = green;
-            _blue[index] = blue;
+            _background[index] = color.ToArgb();
+            _layout?.Clear(index);
         }
     }
 
-    public void FillPolygon(IReadOnlyList<PointD> points, Color color, RectangleF viewport)
+    internal void VisitCoverage(ReadOnlySpan<PointD> points, RectangleF viewport, Action<int, double> sink)
+        => Rasterize(points, Color.White, viewport, sink);
+
+    public void DrawLayoutPolygon(ReadOnlySpan<PointD> points, Color baseColor, RectangleF viewport)
+        => Rasterize(points, baseColor, viewport, null);
+
+    private void Rasterize(ReadOnlySpan<PointD> points, Color color, RectangleF viewport, Action<int, double>? sink)
     {
-        if (points.Count < 3) return;
+        if (points.Length < 3) return;
         var bounds = BoundsD.Empty;
         foreach (var point in points)
         {
@@ -73,84 +75,162 @@ internal sealed class CoverageRasterizer
         var right = (int)Math.Ceiling(maxX);
         var top = (int)Math.Floor(minY);
         var bottom = (int)Math.Ceiling(maxY);
-        var red = SrgbColorSpace.Decode(color.R);
-        var green = SrgbColorSpace.Decode(color.G);
-        var blue = SrgbColorSpace.Decode(color.B);
+        var rgb = SrgbColorSpace.DecodeRgb(color.ToArgb());
+        var layout = sink is null;
+        if (layout) _layout ??= new LayoutCompositor(_background.Length);
 
+        // With an extent <= twice the inward-band width, opposite bands cover
+        // all geometry. Their neighbour calculation is redundant, not a different
+        // rendering style. This avoids halo work for millions of tiny shapes.
+        var onlyOutline = layout && (bounds.Width <= 2 * LayoutCompositor.OutlineWidthPixels ||
+            bounds.Height <= 2 * LayoutCompositor.OutlineWidthPixels);
+        var halo = layout && !onlyOutline;
+        var scanLeft = left - (halo ? 1 : 0);
+        var scanRight = right + (halo ? 1 : 0);
+        var scanTop = top - (halo ? 1 : 0);
+        var scanBottom = bottom + (halo ? 1 : 0);
+        var fractionalX = clipLeft > left || clipRight < right;
+
+        // Bucket edges by their first row. One reusable integer per input vertex;
+        // active edges link through the same array, without sorting or copies.
+        if (_nextEdge.Length < points.Length)
+            Array.Resize(ref _nextEdge, Math.Max(points.Length, _nextEdge.Length * 2));
+        Array.Fill(_starts, -1, scanTop + 1, scanBottom - scanTop);
         var previous = points[^1];
-        foreach (var point in points)
+        for (var i = 0; i < points.Length; i++)
         {
-            AddEdge(previous, point, left, right, top, bottom, clipLeft, clipTop, clipRight, clipBottom);
+            var point = points[i];
+            var startY = Math.Max(Math.Min(previous.Y, point.Y), scanTop);
+            var endY = Math.Min(Math.Max(previous.Y, point.Y), scanBottom);
+            if (startY < endY)
+            {
+                var row = (int)Math.Floor(startY) + 1;
+                _nextEdge[i] = _starts[row];
+                _starts[row] = i;
+            }
             previous = point;
         }
 
-        for (var y = top; y < bottom; y++)
+        var active = -1;
+        for (var y = scanTop; y < scanBottom; y++)
         {
-            double windingArea = 0;
-            var row = y * _width;
-            for (var x = left; x < right; x++)
+            for (var edge = _starts[y + 1]; edge >= 0;)
             {
-                var index = row + x;
-                windingArea += _steps[index];
-                var pixelWidth = Math.Min(x + 1, clipRight) - Math.Max(x, clipLeft);
-                var coverage = Math.Clamp(Math.Abs(_area[index] + windingArea * pixelWidth), 0, 1);
-                var alpha = (float)(coverage * color.A / 255.0);
-                // Quantize only when exporting the completed frame. Tiny repeated
-                // shapes still contribute even if each is below one 8-bit level.
-                // Coverage is linear light, not a multiplier on gamma-encoded
-                // display bytes. This changes color response, never geometry.
-                _red[index] += (red - _red[index]) * alpha;
-                _green[index] += (green - _green[index]) * alpha;
-                _blue[index] += (blue - _blue[index]) * alpha;
-                _area[index] = 0;
-                _steps[index] = 0;
+                var next = _nextEdge[edge];
+                _nextEdge[edge] = active;
+                active = edge;
+                edge = next;
+            }
+            // Full pixels reuse halo coverage directly. Extra integration is
+            // needed only where a fractional viewport boundary clips a pixel.
+            var clipped = halo && y >= top && y < bottom &&
+                (fractionalX || clipTop > y || clipBottom < y + 1);
+            var slot = (y + 1) % 3;
+            var previousEdge = -1;
+            for (var edge = active; edge >= 0;)
+            {
+                var next = _nextEdge[edge];
+                var from = edge == 0 ? points[^1] : points[edge - 1];
+                var to = points[edge];
+                var sign = from.Y < to.Y ? 1 : -1;
+                var low = sign > 0 ? from : to;
+                var high = sign > 0 ? to : from;
+                var slope = (high.X - low.X) / (high.Y - low.Y);
+                AddRowEdge(low, high, slope, sign, y, scanLeft, scanRight,
+                    halo ? scanLeft : clipLeft, halo ? scanTop : clipTop,
+                    halo ? scanRight : clipRight, halo ? scanBottom : clipBottom, _area, _steps);
+                if (clipped)
+                    AddRowEdge(low, high, slope, sign, y, left, right,
+                        clipLeft, clipTop, clipRight, clipBottom, _clipArea, _clipSteps);
+                if (high.Y <= y + 1)
+                {
+                    if (previousEdge < 0) active = next;
+                    else _nextEdge[previousEdge] = next;
+                }
+                else previousEdge = edge;
+                edge = next;
+            }
+
+            var currentRow = _rows[slot];
+            var middleSlot = (slot + 2) % 3;
+            var middle = _rows[middleSlot];
+            var above = _rows[(slot + 1) % 3];
+            var emitPrevious = halo && y > top && y <= bottom;
+            var previousClipped = fractionalX || clipTop > y - 1 || clipBottom < y;
+            double winding = 0, clippedWinding = 0;
+            for (var x = scanLeft; x < scanRight; x++)
+            {
+                var column = x + 1;
+                winding += _steps[column];
+                var pixelWidth = halo ? 1 : Math.Min(x + 1, clipRight) - Math.Max(x, clipLeft);
+                var coverage = Math.Clamp(Math.Abs(_area[column] + winding * pixelWidth), 0, 1);
+                _area[column] = 0;
+                _steps[column] = 0;
+                if (!halo)
+                {
+                    if (coverage <= 0) continue;
+                    var index = y * _width + x;
+                    if (onlyOutline) _layout!.Add(index, rgb, (float)coverage, (float)coverage);
+                    else sink!(index, coverage);
+                    continue;
+                }
+                currentRow[column] = coverage;
+                if (x < left || x >= right) continue;
+                var covered = previousClipped ? _clippedRow[column] : (float)middle[column];
+                if (emitPrevious && covered > 0)
+                {
+                    var fullCoverage = middle[column];
+                    var thickness = LayoutCompositor.OutlineWidthPixels;
+                    var horizontal = Math.Min(fullCoverage, Math.Max(0, thickness - middle[column - 1]) +
+                        Math.Max(0, thickness - middle[column + 1]));
+                    var vertical = Math.Min(fullCoverage, Math.Max(0, thickness - above[column]) +
+                        Math.Max(0, thickness - coverage));
+                    var band = fullCoverage > 0 ? horizontal + vertical * (1 - horizontal / fullCoverage) : 0;
+                    _layout!.Add((y - 1) * _width + x, rgb, covered, Math.Clamp(band, 0, covered));
+                }
+                // Consume the previous clipped pixel before replacing it: this
+                // mask needs one row, not a second three-row neighbourhood.
+                if (!clipped) continue;
+                clippedWinding += _clipSteps[column];
+                var w = Math.Min(x + 1, clipRight) - Math.Max(x, clipLeft);
+                _clippedRow[column] = (float)Math.Clamp(Math.Abs(_clipArea[column] + clippedWinding * w), 0, 1);
+                _clipArea[column] = 0;
+                _clipSteps[column] = 0;
             }
         }
     }
 
-    private void AddEdge(PointD from, PointD to, int left, int right, int top, int bottom,
-        double clipLeft, double clipTop, double clipRight, double clipBottom)
+    private static void AddRowEdge(PointD low, PointD high, double slope, int sign, int y,
+        int left, int right, double clipLeft, double clipTop, double clipRight, double clipBottom,
+        double[] area, double[] steps)
     {
-        if (from.Y == to.Y) return;
-        var sign = from.Y < to.Y ? 1 : -1;
-        var low = sign > 0 ? from : to;
-        var high = sign > 0 ? to : from;
-        var startY = Math.Max(Math.Max(low.Y, top), clipTop);
-        var endY = Math.Min(Math.Min(high.Y, bottom), clipBottom);
-        if (startY >= endY) return;
-        var slope = (high.X - low.X) / (high.Y - low.Y);
-        for (var y = (int)Math.Floor(startY); y < Math.Ceiling(endY); y++)
+        var y0 = Math.Max(Math.Max(y, low.Y), clipTop);
+        var y1 = Math.Min(Math.Min(y + 1, high.Y), clipBottom);
+        if (y0 >= y1) return;
+        var x0 = low.X + (y0 - low.Y) * slope;
+        var x1 = low.X + (y1 - low.Y) * slope;
+        var xLow = Math.Min(x0, x1);
+        var xHigh = Math.Max(x0, x1);
+        var span = xHigh - xLow;
+        var signedHeight = (y1 - y0) * sign;
+        var first = (int)Math.Clamp(Math.Floor(xLow), left, right);
+        var full = (int)Math.Clamp(Math.Ceiling(xHigh), left, right);
+        for (var x = first; x < full; x++)
         {
-            var y0 = Math.Max(y, startY);
-            var y1 = Math.Min(y + 1, endY);
-            var x0 = low.X + (y0 - low.Y) * slope;
-            var x1 = low.X + (y1 - low.Y) * slope;
-            var xLow = Math.Min(x0, x1);
-            var xHigh = Math.Max(x0, x1);
-            var span = xHigh - xLow;
-            var signedHeight = (y1 - y0) * sign;
-            // Clip before converting to integers (GDS coordinates may be far off-screen).
-            var first = (int)Math.Clamp(Math.Floor(xLow), left, right);
-            var full = (int)Math.Clamp(Math.Ceiling(xHigh), left, right);
-            var row = y * _width;
-            for (var x = first; x < full; x++)
+            var pixelLeft = Math.Max(x, clipLeft);
+            var pixelRight = Math.Min(x + 1, clipRight);
+            double average;
+            if (span == 0) average = Math.Clamp(pixelRight - xLow, 0, pixelRight - pixelLeft);
+            else
             {
-                var pixelLeft = Math.Max(x, clipLeft);
-                var pixelRight = Math.Min(x + 1, clipRight);
-                double average;
-                if (span == 0)
-                    average = Math.Clamp(pixelRight - xLow, 0, pixelRight - pixelLeft);
-                else
-                {
-                    var a = Math.Clamp((pixelLeft - xLow) / span, 0, 1);
-                    var b = Math.Clamp((pixelRight - xLow) / span, 0, 1);
-                    average = a * (pixelRight - pixelLeft) +
-                        (b - a) * (pixelRight - (xLow + span * (a + b) / 2));
-                }
-                _area[row + x] += signedHeight * average;
+                var a = Math.Clamp((pixelLeft - xLow) / span, 0, 1);
+                var b = Math.Clamp((pixelRight - xLow) / span, 0, 1);
+                average = a * (pixelRight - pixelLeft) +
+                    (b - a) * (pixelRight - (xLow + span * (a + b) / 2));
             }
-            if (full < right) _steps[row + full] += signedHeight;
+            area[x + 1] += signedHeight * average;
         }
+        if (full < right) steps[full + 1] += signedHeight;
     }
 
     public unsafe Bitmap ToBitmap()
@@ -166,9 +246,11 @@ internal sealed class CoverageRasterizer
                 for (var x = 0; x < _width; x++)
                 {
                     var index = y * _width + x;
-                    output[x * 4] = SrgbColorSpace.Encode(_blue[index]);
-                    output[x * 4 + 1] = SrgbColorSpace.Encode(_green[index]);
-                    output[x * 4 + 2] = SrgbColorSpace.Encode(_red[index]);
+                    var rgb = SrgbColorSpace.DecodeRgb(_background[index]);
+                    if (_layout is not null) rgb = _layout.Blend(index, rgb);
+                    output[x * 4] = SrgbColorSpace.Encode(rgb.Z);
+                    output[x * 4 + 1] = SrgbColorSpace.Encode(rgb.Y);
+                    output[x * 4 + 2] = SrgbColorSpace.Encode(rgb.X);
                     output[x * 4 + 3] = 255;
                 }
             }

@@ -6,6 +6,31 @@ namespace GdsPreview.Core.Tests;
 
 internal static class RenderingTests
 {
+    public static void ExactSrgbLookup()
+    {
+        var thresholds = Enumerable.Range(0, 255)
+            .Select(i => (float)DecodeReference((i + .5) / 255.0)).ToArray();
+        void Check(float value)
+        {
+            var expected = thresholds.Count(t => value >= t);
+            Near(expected, SrgbColorSpace.Encode(value), 0, $"exact sRGB lookup at {value:R}");
+        }
+        foreach (var threshold in thresholds)
+        {
+            Check(float.BitDecrement(threshold));
+            Check(threshold);
+            Check(float.BitIncrement(threshold));
+        }
+        for (var i = 0; i <= 4096; i++)
+        {
+            Check(i / 4096f);
+            Check(float.BitDecrement(i / 4096f));
+        }
+        Check(float.NaN);
+        Check(float.PositiveInfinity);
+        Check(float.NegativeInfinity);
+    }
+
     public static void SubpixelCoverage()
     {
         foreach (var width in new[] { .01, .05, .1, .25, .5, 1, 2 })
@@ -14,7 +39,7 @@ internal static class RenderingTests
         {
             var points = Rectangle(10, 30 + phase, 110, 30 + phase + width);
             if (vertical) points = points.Select(p => new PointD(p.Y, p.X)).ToArray();
-            var surface = new CoverageRasterizer(128, 128, Color.Black);
+            var surface = new ReferenceRasterizer(128, 128, Color.Black);
             surface.FillPolygon(points, Color.White, new RectangleF(0, 0, 128, 128));
             using var bitmap = surface.ToBitmap();
             double integrated = 0;
@@ -43,7 +68,7 @@ internal static class RenderingTests
         {
             var points = polygon.Select(p => p + offset).ToArray();
             if (reverse) Array.Reverse(points);
-            var surface = new CoverageRasterizer(64, 64, Color.Black);
+            var surface = new ReferenceRasterizer(64, 64, Color.Black);
             var clip = new RectangleF(.2f, .3f, 55.4f, 51.6f);
             surface.FillPolygon(points, Color.White, clip);
             using var bitmap = surface.ToBitmap();
@@ -55,7 +80,7 @@ internal static class RenderingTests
                 Near(EncodeReference(expected), bitmap.GetPixel(x, y).R, .51, $"pixel ({x}, {y})");
             }
         }
-        var huge = new CoverageRasterizer(64, 64, Color.Black);
+        var huge = new ReferenceRasterizer(64, 64, Color.Black);
         huge.FillPolygon(Rectangle(-1e12, -1e12, 1e12, 1e12), Color.White, new RectangleF(0, 0, 64, 64));
         using var full = huge.ToBitmap();
         Near(255, full.GetPixel(32, 32).R, 0, "far-off-screen clipping");
@@ -65,7 +90,7 @@ internal static class RenderingTests
         {
             var transform = Transform2D.ForReference(new PointD(32.17, 32.31), 1, angle, false);
             var points = Rectangle(-20, -width / 2, 20, width / 2).Select(transform.Apply).ToArray();
-            var surface = new CoverageRasterizer(64, 64, Color.Black);
+            var surface = new ReferenceRasterizer(64, 64, Color.Black);
             surface.FillPolygon(points, Color.White, new RectangleF(0, 0, 64, 64));
             using var bitmap = surface.ToBitmap();
             for (var y = 0; y < 64; y++)
@@ -79,7 +104,7 @@ internal static class RenderingTests
     {
         PointD[] points = [new(10, 10), new(50, 10), new(50, 50), new(10, 50), new(10, 10),
             new(20, 20), new(20, 40), new(40, 40), new(40, 20), new(20, 20), new(10, 10)];
-        var surface = new CoverageRasterizer(64, 64, Color.Black);
+        var surface = new ReferenceRasterizer(64, 64, Color.Black);
         surface.FillPolygon(points, Color.White, new RectangleF(0, 0, 64, 64));
         using var image = surface.ToBitmap();
         Near(0, image.GetPixel(30, 30).R, 0, "hole center");
@@ -169,7 +194,7 @@ internal static class RenderingTests
 
     public static void TinyGeometryAccumulates()
     {
-        var surface = new CoverageRasterizer(16, 16, Color.Black);
+        var surface = new ReferenceRasterizer(16, 16, Color.Black);
         var tiny = Rectangle(5.1, 5.1, 5.11, 5.11);
         for (var i = 0; i < 1000; i++) surface.FillPolygon(tiny, Color.White, new RectangleF(0, 0, 16, 16));
         using var image = surface.ToBitmap();
@@ -178,10 +203,11 @@ internal static class RenderingTests
 
     public static void LinearLightColors()
     {
+        const int materialOpacity = 128; // Low-level source-over reference, not layout styling.
         for (var value = 0; value < 256; value++)
             Near(value, SrgbColorSpace.Encode(SrgbColorSpace.Decode((byte)value)), 0, "sRGB round trip");
 
-        var surface = new CoverageRasterizer(8, 8, Color.Black);
+        var surface = new ReferenceRasterizer(8, 8, Color.Black);
         surface.FillPolygon(Rectangle(2, 2, 3, 2.5), Color.White, new RectangleF(0, 0, 8, 8));
         using var halfCovered = surface.ToBitmap();
         Near(188, halfCovered.GetPixel(2, 2).R, 0, "half-covered white must encode half light, not half RGB");
@@ -192,12 +218,12 @@ internal static class RenderingTests
         {
             var foreground = HierarchicalBitmapRenderer.PaletteColor(layer, 0);
             var under = HierarchicalBitmapRenderer.PaletteColor(layer + 1, 0);
-            var alpha = HierarchicalBitmapRenderer.GeometryOpacity / 255.0;
-            var mixed = new CoverageRasterizer(8, 8, background);
+            var alpha = materialOpacity / 255.0;
+            var mixed = new ReferenceRasterizer(8, 8, background);
             var shape = Rectangle(1, 1, 7, 7);
             var viewport = new RectangleF(0, 0, 8, 8);
-            mixed.FillPolygon(shape, Color.FromArgb(HierarchicalBitmapRenderer.GeometryOpacity, under), viewport);
-            mixed.FillPolygon(shape, Color.FromArgb(HierarchicalBitmapRenderer.GeometryOpacity, foreground), viewport);
+            mixed.FillPolygon(shape, Color.FromArgb(materialOpacity, under), viewport);
+            mixed.FillPolygon(shape, Color.FromArgb(materialOpacity, foreground), viewport);
             using var image = mixed.ToBitmap();
             var actual = image.GetPixel(4, 4);
             foreach (var (b, u, f, a) in new[] { (background.R, under.R, foreground.R, actual.R),
@@ -208,7 +234,6 @@ internal static class RenderingTests
                 Near(EncodeReference(expected), a, .51, "transparent overlap");
             }
         }
-        Near(128, HierarchicalBitmapRenderer.GeometryOpacity, 0, "layer transparency regression");
         foreach (var layer in Enumerable.Range(0, 1024))
         foreach (var dataType in new[] { 0, 1, 31 })
         {
@@ -276,7 +301,7 @@ internal static class RenderingTests
                 throw new InvalidOperationException($"Images differ at ({x}, {y}): {a.GetPixel(x, y)} vs {b.GetPixel(x, y)}.");
     }
 
-    private static double PixelArea(IReadOnlyList<PointD> input, double left, double top, double right, double bottom)
+    internal static double PixelArea(IReadOnlyList<PointD> input, double left, double top, double right, double bottom)
     {
         if (left >= right || top >= bottom) return 0;
         var p = Clip(input, v => v.X - left);

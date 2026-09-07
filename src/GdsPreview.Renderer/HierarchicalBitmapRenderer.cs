@@ -5,10 +5,8 @@ namespace GdsPreview.Renderer;
 
 internal static class HierarchicalBitmapRenderer
 {
-    // One material opacity for both PATH and BOUNDARY. Coverage, not a cosmetic
-    // outline, controls the visibility of subpixel geometry.
-    internal const int GeometryOpacity = 128;
-    internal static Color PaletteColor(int layer, int dataType) => Renderer.LayerColor(layer, dataType);
+    // Both PATH and BOUNDARY use the same bounded fill + inward-boundary style.
+    internal static Color PaletteColor(int layer, int dataType) => LayerPalette.For(layer, dataType);
     public static Bitmap Render(GdsDocument document, int width, int height)
     {
         var allTopCells = document.GetTopCells();
@@ -50,7 +48,6 @@ internal static class HierarchicalBitmapRenderer
         private readonly Dictionary<string, BoundsD> _bounds = new(StringComparer.Ordinal);
         private readonly Dictionary<string, long> _expandedGeometry = new(StringComparer.Ordinal);
         private readonly HashSet<string> _renderStack = new(StringComparer.Ordinal);
-        private readonly Dictionary<(int Layer, int DataType), Color> _colors = [];
         private readonly Dictionary<int, PointD[]> _pointBuffers = [];
         private readonly Dictionary<GdsPath, PointD[]> _pathOutlines = new(ReferenceEqualityComparer.Instance);
         private long _bufferedPoints;
@@ -182,12 +179,12 @@ internal static class HierarchicalBitmapRenderer
                     switch (element)
                     {
                         case GdsPolygon polygon when polygon.Points.Count >= 3:
-                            surface.FillPolygon(MapPoints(polygon.Points, transform),
-                                GetColor(polygon.Layer, polygon.DataType), viewport);
+                            surface.DrawLayoutPolygon(MapPoints(polygon.Points, transform),
+                                PaletteColor(polygon.Layer, polygon.DataType), viewport);
                             break;
                         case GdsPath path when path.Points.Count >= 2:
-                            surface.FillPolygon(MapPoints(GetPathOutline(path), transform),
-                                GetColor(path.Layer, path.DataType), viewport);
+                            surface.DrawLayoutPolygon(MapPoints(GetPathOutline(path), transform),
+                                PaletteColor(path.Layer, path.DataType), viewport);
                             break;
                         case GdsReference reference:
                             if (!_document.Cells.TryGetValue(reference.CellName, out var target)) break;
@@ -202,15 +199,6 @@ internal static class HierarchicalBitmapRenderer
                 }
             }
             finally { _renderStack.Remove(cell.Name); }
-        }
-
-        private Color GetColor(int layer, int dataType)
-        {
-            var key = (layer, dataType);
-            if (_colors.TryGetValue(key, out var color)) return color;
-            color = Color.FromArgb(GeometryOpacity, LayerColor(layer, dataType));
-            if (_colors.Count < 4096) _colors.Add(key, color);
-            return color;
         }
 
         private PointD[] GetPathOutline(GdsPath path)
@@ -352,23 +340,6 @@ internal static class HierarchicalBitmapRenderer
             if (absolute >= 1e-6) return $"{meters * 1e6:0.###} µm";
             if (absolute >= 1e-9) return $"{meters * 1e9:0.###} nm";
             return $"{meters:0.###e+0} m";
-        }
-
-        public static Color LayerColor(int layer, int dataType)
-        {
-            var hash = unchecked((uint)(layer * 0x45D9F3B) ^ (uint)(dataType * 0x119DE1F3));
-            var hue = hash % 360;
-            // Preserve the stable layer/datatype hue mapping, but lift dark
-            // reds/blues for a dark canvas. Opacity is independent of coverage.
-            var chroma = 0.95 * 0.42;
-            var x = chroma * (1 - Math.Abs(hue / 60.0 % 2 - 1));
-            var m = 0.95 - chroma;
-            (double r, double g, double b) = hue switch
-            {
-                < 60 => (chroma, x, 0d), < 120 => (x, chroma, 0d), < 180 => (0d, chroma, x),
-                < 240 => (0d, x, chroma), < 300 => (x, 0d, chroma), _ => (chroma, 0d, x)
-            };
-            return Color.FromArgb((int)((r + m) * 255), (int)((g + m) * 255), (int)((b + m) * 255));
         }
 
         private static long SaturatingAdd(long left, long right) =>

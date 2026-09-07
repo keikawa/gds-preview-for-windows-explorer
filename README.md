@@ -112,13 +112,26 @@ Defaults are intentionally conservative to protect Explorer:
 Cell and array transforms are composed in double precision, then polygons and physical-width
 paths are drawn directly on one final pixel grid. Geometry is traversed without building a
 flattened instance list; only vector outlines and scratch buffers are reused. There are no
-per-cell bitmap caches, fixed-width polygon outlines, or minimum-pixel path widths.
+per-cell bitmap caches, outward polygon strokes, or minimum-pixel path widths.
+Preview latency and bounded memory are primary design constraints, not just reasons
+to stay below the timeout. Fill and outlines share streamed coverage rows; the
+rasterizer does not allocate full-canvas coverage scratch or traverse geometry twice.
 
-Antialiasing integrates polygon edge areas within each pixel. Polygon fills and path fills use
-the same layer color and 50% material opacity so overlapping layers remain visible. The
-stable layer/datatype hues use brighter tints for the dark canvas. Color blending takes place
-in linear light, with sRGB encoding only at final output; coverage is not artificially boosted.
-Subpixel structures contribute proportionally to coverage;
+Antialiasing integrates polygon edge areas within each pixel. Polygons and paths share a
+subdued fill and a brighter, approximately half-pixel inward boundary accent. Fill and boundary contributions are
+accumulated separately; fill opacity is capped at 32/255 even with many overlaps, and
+boundaries are composited afterwards at up to 240/255. A later enclosing fill therefore
+cannot paint over internal outlines. The accent is extracted inside the true pixel coverage,
+not by expanding or imposing a minimum width on the geometry. This display style is not a
+physical transparency simulation. A
+fixed 256-color categorical palette is selected by a deterministic layer/datatype hash;
+the same pair has the same base color across files, regardless of other layers or cell order.
+Different pairs can still share
+a color, and color differences can be difficult to perceive in dense overlaps. See
+[the palette design and validation notes](docs/LAYER-COLORS.md). Color blending takes place
+in linear light, with sRGB encoding only at final output. Contributions are weighted by
+covered area, and outlines never extend into uncovered pixels. Subpixel structures can
+contribute less than a whole pixel;
 they can naturally become faint or indistinguishable at preview resolution. The preview is
 not a substitute for inspecting dimensions and connectivity in a layout editor. PATH caps
 0 (flat), 1 (round), and 2 (extended square) are supported; round caps are polygonally

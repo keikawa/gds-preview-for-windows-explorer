@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace GdsPreview.Renderer;
 
 /// <summary>Convert display RGB to linear light for coverage and alpha compositing.</summary>
@@ -7,22 +9,32 @@ internal static class SrgbColorSpace
         .Select(value => (float)DecodeChannel(value / 255.0)).ToArray();
     private static readonly float[] EncodeThresholds = Enumerable.Range(0, 255)
         .Select(value => (float)DecodeChannel((value + .5) / 255.0)).ToArray();
+    private static readonly byte[] EncodeLower = CreateEncodeLower();
 
     public static float Decode(byte value) => DecodeTable[value];
+    public static Vector3 DecodeRgb(int argb) => new(Decode((byte)(argb >> 16)), Decode((byte)(argb >> 8)), Decode((byte)argb));
 
-    // Quantize only at final output, using sRGB half-code thresholds rather than
-    // a coarse linear LUT. At most eight comparisons, with no per-pixel powers.
+    // A 1/4096-wide linear interval contains at most one sRGB half-code threshold
+    // (the minimum spacing is 1/(255*12.92)). One lookup plus one exact comparison
+    // gives the same quantizer as binary search, not an approximate colour LUT.
     public static byte Encode(float linear)
     {
-        var low = 0;
-        var high = 255;
-        while (low < high)
+        if (!(linear > 0)) return 0;
+        if (linear >= 1) return 255;
+        var lower = EncodeLower[(int)(linear * 4096)];
+        return lower < 255 && linear >= EncodeThresholds[lower] ? (byte)(lower + 1) : lower;
+    }
+
+    private static byte[] CreateEncodeLower()
+    {
+        var table = new byte[4096];
+        var threshold = 0;
+        for (var i = 0; i < table.Length; i++)
         {
-            var middle = (low + high) / 2;
-            if (linear >= EncodeThresholds[middle]) low = middle + 1;
-            else high = middle;
+            while (threshold < 255 && i / 4096f >= EncodeThresholds[threshold]) threshold++;
+            table[i] = (byte)threshold;
         }
-        return (byte)low;
+        return table;
     }
 
     private static double DecodeChannel(double value) => value <= .04045
