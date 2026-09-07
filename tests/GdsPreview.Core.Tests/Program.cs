@@ -20,11 +20,34 @@ internal static class Program
         ("rejects truncated data", RejectsTruncatedData),
         ("accepts padding after ENDLIB", AcceptsPaddingAfterEndLib),
         ("preserves every vertex in a large polygon", PreservesEveryVertexInLargePolygon),
-        ("bounds memory for large flat layout", BoundsMemoryForLargeFlatLayout)
+        ("bounds memory for large flat layout", BoundsMemoryForLargeFlatLayout),
+        ("subpixel coverage follows physical width and phase", RenderingTests.SubpixelCoverage),
+        ("polygon coverage matches independent pixel clipping", RenderingTests.PolygonCoverage),
+        ("hole bridges preserve empty interiors", RenderingTests.Holes),
+        ("hierarchy and flattening have identical coverage", RenderingTests.Hierarchy),
+        ("arrays have identical coverage to individual references", RenderingTests.Arrays),
+        ("path widths and caps are geometric", RenderingTests.Paths),
+        ("sub-quantization geometry accumulates", RenderingTests.TinyGeometryAccumulates)
     ];
 
-    private static int Main()
+    private static int Main(string[] args)
     {
+        if (args.Length == 3 && args[0] == "--verify-preview")
+        {
+            using var actual = new Bitmap(args[2]);
+            using var expected = HierarchicalBitmapRenderer.Render(GdsParser.ParseFile(args[1]), actual.Width, actual.Height);
+            // Native captures do not have meaningful alpha. Compare layout RGB,
+            // excluding the status font (whose DPI can differ between test hosts).
+            for (var y = 0; y < actual.Height - 52; y++)
+            for (var x = 0; x < actual.Width; x++)
+                if ((actual.GetPixel(x, y).ToArgb() & 0xffffff) != (expected.GetPixel(x, y).ToArgb() & 0xffffff))
+                {
+                    Console.Error.WriteLine($"Native preview differs from final-grid rendering at ({x}, {y}).");
+                    return 1;
+                }
+            Console.WriteLine($"PASS  native final-grid pixels ({actual.Width} x {actual.Height})");
+            return 0;
+        }
         var failures = 0;
         foreach (var (name, test) in Tests)
         {
@@ -196,8 +219,20 @@ internal static class Program
             "Skipped geometry must remain represented in the fitted bounds.");
 
         using var bitmap = HierarchicalBitmapRenderer.Render(document, 480, 320);
-        True(CountBrightContentPixels(bitmap) > 100,
-            "Stored geometry disappeared when the parser safety limit was reached.");
+        // These 10x10 DBU boxes are only ~0.222 pixels wide at this fit scale.
+        // A bright-pixel threshold tested the old one-pixel outlines, not the data.
+        // Integrate their signal instead (roughly 493 covered pixels).
+        long signal = 0;
+        for (var y = 0; y < bitmap.Height - 52; y++)
+        for (var x = 0; x < bitmap.Width; x++)
+        {
+            var pixel = bitmap.GetPixel(x, y);
+            signal += Math.Max(pixel.R - 24, Math.Max(pixel.G - 27, pixel.B - 32));
+        }
+        var expectedSignal = 10_000 * Math.Pow(444.0 / 19_990 * 10, 2) *
+            HierarchicalBitmapRenderer.GeometryOpacity / 255.0 * (242 - 27);
+        True(signal > expectedSignal * .75 && signal < expectedSignal * 1.05,
+            $"Stored geometry has an unexpected integrated signal: {signal}.");
     }
 
     private static int CountBrightContentPixels(Bitmap bitmap)

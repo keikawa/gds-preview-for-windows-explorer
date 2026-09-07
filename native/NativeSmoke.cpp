@@ -58,13 +58,15 @@ static bool SaveWindowBitmap(HWND window, const wchar_t* path) {
 
 int wmain(int argument_count, wchar_t** arguments) {
     const bool initial_resize_mode = argument_count >= 2 && wcscmp(arguments[1], L"--initial-resize") == 0;
-    if ((!initial_resize_mode && argument_count != 4 && argument_count != 5) ||
-        (initial_resize_mode && argument_count != 5 && argument_count != 6)) return 2;
+    const bool resize_mode = argument_count >= 2 && wcscmp(arguments[1], L"--resize") == 0;
+    const bool size_mode = initial_resize_mode || resize_mode;
+    if ((!size_mode && argument_count != 4 && argument_count != 5) ||
+        (size_mode && argument_count != 5 && argument_count != 6)) return 2;
     const bool registered_mode = wcscmp(arguments[1], L"--registered") == 0;
-    const wchar_t* library_path = initial_resize_mode ? arguments[2] : arguments[1];
-    const wchar_t* file_path = initial_resize_mode ? arguments[3] : arguments[2];
-    const wchar_t* output_path = initial_resize_mode ? arguments[4] : arguments[3];
-    const int wait_index = initial_resize_mode ? 5 : 4;
+    const wchar_t* library_path = size_mode ? arguments[2] : arguments[1];
+    const wchar_t* file_path = size_mode ? arguments[3] : arguments[2];
+    const wchar_t* output_path = size_mode ? arguments[4] : arguments[3];
+    const int wait_index = size_mode ? 5 : 4;
     const DWORD wait_time = argument_count > wait_index ? static_cast<DWORD>(_wtoi(arguments[wait_index])) : 4000;
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     HMODULE library = nullptr;
@@ -109,7 +111,18 @@ int wmain(int argument_count, wchar_t** arguments) {
     if (FAILED(result)) return 7;
 
     const DWORD started = GetTickCount();
+    int resize_step = 0;
     while (GetTickCount() - started < wait_time) {
+        if (resize_mode) {
+            const DWORD elapsed = GetTickCount() - started;
+            const DWORD times[] = {40, 80, 120, 1500};
+            if (resize_step < 4 && elapsed >= times[resize_step]) {
+                const LONG widths[] = {420, 500, 460, 404};
+                const RECT next{0, 0, widths[resize_step], 294};
+                if (FAILED(preview->SetRect(&next))) return 9;
+                ++resize_step;
+            }
+        }
         MSG message{};
         while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
             TranslateMessage(&message);

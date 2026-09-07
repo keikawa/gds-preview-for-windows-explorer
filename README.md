@@ -84,7 +84,7 @@ sideload signing, certification, and test instructions are in
 
 - `src/GdsPreview.Core` — dependency-free GDSII parser and cell hierarchy model
 - `native/GdsPreview.Native.cpp` — minimal native COM preview handler loaded by `prevhost.exe`
-- `src/GdsPreview.Renderer` — isolated .NET hierarchical cached rasterizer process
+- `src/GdsPreview.Renderer` — isolated .NET final-grid coverage rasterizer process
 - `tests/GdsPreview.Core.Tests` — regression and load tests without an external test framework
 - `tools/GdsPreview.Sample` — deterministic GDSII sample generator
 - `scripts` — build, package, install, verification, and uninstall commands
@@ -104,11 +104,28 @@ Defaults are intentionally conservative to protect Explorer:
 - Retained geometry: 300,000 total and per cell
 - Retained vertices: 8,000,000
 - References: 1,000,000 (the preview fails instead of showing an incomplete hierarchy if exceeded)
-- Cached cell rasters: 32,000,000 pixels total, up to 4096 pixels per dimension
+- Hierarchy depth: 512
+- Cached path outlines: 8,000,000 points; reusable coordinate buffers: 1,000,000 points
+- Preview canvas: up to 1600 × 1200 pixels (larger panes fit this bounded canvas)
 - Renderer time: 6 seconds
 
-Repeated cells and arrays are rendered from cached cell rasters instead of flattening every
-instance. The status line shows `simplified` whenever parser retention limits affected the preview.
+Cell and array transforms are composed in double precision, then polygons and physical-width
+paths are drawn directly on one final pixel grid. Geometry is traversed without building a
+flattened instance list; only vector outlines and scratch buffers are reused. There are no
+per-cell bitmap caches, fixed-width polygon outlines, or minimum-pixel path widths.
+
+Antialiasing integrates polygon edge areas within each pixel. Polygon fills and path fills use
+the same layer color and opacity. Subpixel structures contribute proportionally to coverage;
+they can naturally become faint or indistinguishable at preview resolution. The preview is
+not a substitute for inspecting dimensions and connectivity in a layout editor. PATH caps
+0 (flat), 1 (round), and 2 (extended square) are supported; round caps are polygonally
+approximated and joins use a 10-half-width miter limit. Custom PATH extensions and absolute
+negative-WIDTH semantics are not interpreted by the current parser. Self-intersecting
+boundaries are not repaired by the rasterizer.
+
+The native host renders at the pane size within the canvas limit and re-renders after resizing
+settles. The previous frame may be temporarily scaled during resizing. The status line shows
+`simplified` whenever parser retention limits affected the preview.
 
 ## License
 

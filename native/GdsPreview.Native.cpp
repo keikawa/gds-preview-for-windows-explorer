@@ -19,6 +19,7 @@ static const CLSID CLSID_GdsPreview =
 {0x87f8a6bb, 0x6b13, 0x4a41, {0x9d, 0x54, 0xee, 0xb3, 0x9d, 0xbd, 0x1d, 0x6e}};
 
 static constexpr UINT WM_PREVIEW_COMPLETE = WM_APP + 0x4A1;
+static constexpr UINT_PTR RESIZE_TIMER = 1;
 static constexpr DWORD PREVIEW_TIMEOUT_MS = 6000;
 static constexpr size_t SHARED_HEADER_SIZE = 1024;
 static constexpr LONG SHARED_MAGIC = 0x56504447;
@@ -203,9 +204,22 @@ private:
         case WM_PAINT:
             handler->Paint(window);
             return 0;
+        case WM_TIMER:
+            if (wparam == RESIZE_TIMER) {
+                KillTimer(window, RESIZE_TIMER);
+                // Restart only after the pane settles, retaining the window and
+                // the existing six-second process isolation for the new frame.
+                handler->StopJob(false);
+                handler->stopping_.store(false);
+                handler->StartRenderer();
+                InvalidateRect(window, nullptr, FALSE);
+                return 0;
+            }
+            break;
         default:
             return DefWindowProcW(window, message, wparam, lparam);
         }
+        return DefWindowProcW(window, message, wparam, lparam);
     }
 
     bool CreatePreviewWindow() {
@@ -228,30 +242,37 @@ private:
         if (!window_) return;
         MoveWindow(window_, rect_.left, rect_.top,
             std::max(1L, rect_.right - rect_.left), std::max(1L, rect_.bottom - rect_.top), TRUE);
+        const SIZE size = RenderSize();
+        if (shared_ && (shared_->width != size.cx || shared_->height != size.cy))
+            SetTimer(window_, RESIZE_TIMER, 180, nullptr);
+        else
+            KillTimer(window_, RESIZE_TIMER);
+    }
+
+    SIZE RenderSize() const {
+        LONG requested_width = rect_.right - rect_.left;
+        LONG requested_height = rect_.bottom - rect_.top;
+        RECT parent_client{};
+        if ((requested_width <= 1 || requested_height <= 1) && parent_ && GetClientRect(parent_, &parent_client)) {
+            if (requested_width <= 1) requested_width = parent_client.right - parent_client.left;
+            if (requested_height <= 1) requested_height = parent_client.bottom - parent_client.top;
+        }
+        // Render on the pane's pixel grid. Upscaling a small pane to a minimum
+        // canvas and shrinking it again would reintroduce resampling of fine lines.
+        // Only oversized panes use the existing bounded-resolution safety fallback.
+        requested_width = std::max(1L, requested_width);
+        requested_height = std::max(1L, requested_height);
+        const double render_scale = std::min(1.0, std::min(1600.0 / requested_width, 1200.0 / requested_height));
+        const LONG width = std::clamp(static_cast<LONG>(requested_width * render_scale + 0.5), 1L, 1600L);
+        const LONG height = std::clamp(static_cast<LONG>(requested_height * render_scale + 0.5), 1L, 1200L);
+        return SIZE{width, height};
     }
 
     void StartRenderer() {
         native_error_.clear();
-        LONG requested_width = rect_.right - rect_.left;
-        LONG requested_height = rect_.bottom - rect_.top;
-        RECT parent_client{};
-        if ((requested_width < 64 || requested_height < 64) && parent_ && GetClientRect(parent_, &parent_client)) {
-            if (requested_width < 64) requested_width = parent_client.right - parent_client.left;
-            if (requested_height < 64) requested_height = parent_client.bottom - parent_client.top;
-        }
-        // Explorer can call DoPreview while its first layout rectangle is still tiny.  Scale a
-        // useful minimum canvas uniformly so its aspect ratio survives the later SetRect call.
-        requested_width = std::max(1L, requested_width);
-        requested_height = std::max(1L, requested_height);
-        const double minimum_scale = std::max(640.0 / requested_width, 480.0 / requested_height);
-        const double maximum_scale = std::min(1600.0 / requested_width, 1200.0 / requested_height);
-        double render_scale = 1.0;
-        if (requested_width < 640 || requested_height < 480)
-            render_scale = std::min(minimum_scale, maximum_scale);
-        else if (requested_width > 1600 || requested_height > 1200)
-            render_scale = maximum_scale;
-        const LONG width = std::clamp(static_cast<LONG>(requested_width * render_scale + 0.5), 1L, 1600L);
-        const LONG height = std::clamp(static_cast<LONG>(requested_height * render_scale + 0.5), 1L, 1200L);
+        const SIZE size = RenderSize();
+        const LONG width = size.cx;
+        const LONG height = size.cy;
         mapping_size_ = SHARED_HEADER_SIZE + static_cast<SIZE_T>(width) * height * 4;
         SECURITY_ATTRIBUTES security{sizeof(security), nullptr, TRUE};
         mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, &security, PAGE_READWRITE,
@@ -325,8 +346,9 @@ private:
         if (window_) InvalidateRect(window_, nullptr, FALSE);
     }
 
-    void StopJob() {
+    void StopJob(bool destroy_window = true) {
         stopping_.store(true);
+        if (window_) KillTimer(window_, RESIZE_TIMER);
         if (process_ && WaitForSingleObject(process_, 0) == WAIT_TIMEOUT)
             TerminateProcess(process_, 4);
         if (worker_ && GetCurrentThreadId() != worker_id_) WaitForSingleObject(worker_, 2000);
@@ -335,7 +357,7 @@ private:
         if (process_) { CloseHandle(process_); process_ = nullptr; }
         if (shared_) { UnmapViewOfFile(shared_); shared_ = nullptr; }
         if (mapping_) { CloseHandle(mapping_); mapping_ = nullptr; }
-        if (window_) { DestroyWindow(window_); window_ = nullptr; }
+        if (destroy_window && window_) { DestroyWindow(window_); window_ = nullptr; }
     }
 
     void Paint(HWND window) {

@@ -38,6 +38,7 @@ $publishDirectory = Join-Path $repoRoot 'artifacts\GdsPreview'
 $sampleFile = Join-Path $repoRoot 'samples\demo.gds'
 $smokeImage = Join-Path $repoRoot 'artifacts\native-preview.bmp'
 $initialResizeImage = Join-Path $repoRoot 'artifacts\initial-resize-preview.bmp'
+$resizeImage = Join-Path $repoRoot 'artifacts\resize-preview.bmp'
 $nativeSource = Join-Path $repoRoot 'native\GdsPreview.Native.cpp'
 $nativeDefinition = Join-Path $repoRoot 'native\GdsPreview.Native.def'
 $nativeSmokeSource = Join-Path $repoRoot 'native\NativeSmoke.cpp'
@@ -87,6 +88,12 @@ if ($LASTEXITCODE -ne 0) { throw 'Native smoke-host build failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Native end-to-end preview test failed.' }
 & $nativeSmoke --initial-resize $nativeDll $sampleFile $initialResizeImage 4000
 if ($LASTEXITCODE -ne 0) { throw 'Initial resize preview regression test failed.' }
+& $nativeSmoke --resize $nativeDll $sampleFile $resizeImage 4000
+if ($LASTEXITCODE -ne 0) { throw 'Settled resize preview regression test failed.' }
+foreach ($image in @($smokeImage, $initialResizeImage, $resizeImage)) {
+    & $testExecutable --verify-preview $sampleFile $image
+    if ($LASTEXITCODE -ne 0) { throw 'Native final-grid pixel verification failed.' }
+}
 
 $timeoutDirectory = New-Item -ItemType Directory -Force (Join-Path $repoRoot '.codex-tmp\timeout-isolation')
 $hangRenderer = Join-Path $timeoutDirectory.FullName 'GdsPreview.Renderer.exe'
