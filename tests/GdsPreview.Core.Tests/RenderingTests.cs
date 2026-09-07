@@ -18,9 +18,17 @@ internal static class RenderingTests
             surface.FillPolygon(points, Color.White, new RectangleF(0, 0, 128, 128));
             using var bitmap = surface.ToBitmap();
             double integrated = 0;
+            double quantizationError = 0;
             for (var i = 25; i < 36; i++)
-                integrated += (vertical ? bitmap.GetPixel(i, 60) : bitmap.GetPixel(60, i)).R / 255.0;
-            Near(width, integrated, 2.0 / 255, $"width={width}, phase={phase}, vertical={vertical}");
+            {
+                var sample = (vertical ? bitmap.GetPixel(i, 60) : bitmap.GetPixel(60, i)).R;
+                var decoded = DecodeReference(sample / 255.0);
+                integrated += decoded;
+                quantizationError += Math.Max(
+                    decoded - DecodeReference(Math.Max(0, sample - .5) / 255.0),
+                    DecodeReference(Math.Min(255, sample + .5) / 255.0) - decoded);
+            }
+            Near(width, integrated, quantizationError + 1e-6, $"width={width}, phase={phase}, vertical={vertical}");
         }
     }
 
@@ -44,7 +52,7 @@ internal static class RenderingTests
             {
                 var expected = PixelArea(points, Math.Max(x, clip.Left), Math.Max(y, clip.Top),
                     Math.Min(x + 1, clip.Right), Math.Min(y + 1, clip.Bottom));
-                Near(expected, bitmap.GetPixel(x, y).R / 255.0, .51 / 255, $"pixel ({x}, {y})");
+                Near(EncodeReference(expected), bitmap.GetPixel(x, y).R, .51, $"pixel ({x}, {y})");
             }
         }
         var huge = new CoverageRasterizer(64, 64, Color.Black);
@@ -62,8 +70,8 @@ internal static class RenderingTests
             using var bitmap = surface.ToBitmap();
             for (var y = 0; y < 64; y++)
             for (var x = 0; x < 64; x++)
-                Near(PixelArea(points, x, y, x + 1, y + 1), bitmap.GetPixel(x, y).R / 255.0,
-                    .51 / 255, $"oblique width={width}, angle={angle}, pixel ({x}, {y})");
+                Near(EncodeReference(PixelArea(points, x, y, x + 1, y + 1)), bitmap.GetPixel(x, y).R,
+                    .51, $"oblique width={width}, angle={angle}, pixel ({x}, {y})");
         }
     }
 
@@ -165,8 +173,57 @@ internal static class RenderingTests
         var tiny = Rectangle(5.1, 5.1, 5.11, 5.11);
         for (var i = 0; i < 1000; i++) surface.FillPolygon(tiny, Color.White, new RectangleF(0, 0, 16, 16));
         using var image = surface.ToBitmap();
-        Near(255 * (1 - Math.Pow(1 - .0001, 1000)), image.GetPixel(5, 5).R, .51, "accumulated small area");
+        Near(EncodeReference(1 - Math.Pow(1 - .0001, 1000)), image.GetPixel(5, 5).R, .51, "accumulated small area");
     }
+
+    public static void LinearLightColors()
+    {
+        for (var value = 0; value < 256; value++)
+            Near(value, SrgbColorSpace.Encode(SrgbColorSpace.Decode((byte)value)), 0, "sRGB round trip");
+
+        var surface = new CoverageRasterizer(8, 8, Color.Black);
+        surface.FillPolygon(Rectangle(2, 2, 3, 2.5), Color.White, new RectangleF(0, 0, 8, 8));
+        using var halfCovered = surface.ToBitmap();
+        Near(188, halfCovered.GetPixel(2, 2).R, 0, "half-covered white must encode half light, not half RGB");
+        Near(0, halfCovered.GetPixel(3, 2).R, 0, "color conversion must not extend coverage");
+
+        var background = Color.FromArgb(31, 35, 42);
+        foreach (var layer in Enumerable.Range(0, 64))
+        {
+            var foreground = HierarchicalBitmapRenderer.PaletteColor(layer, 0);
+            var under = HierarchicalBitmapRenderer.PaletteColor(layer + 1, 0);
+            var alpha = HierarchicalBitmapRenderer.GeometryOpacity / 255.0;
+            var mixed = new CoverageRasterizer(8, 8, background);
+            var shape = Rectangle(1, 1, 7, 7);
+            var viewport = new RectangleF(0, 0, 8, 8);
+            mixed.FillPolygon(shape, Color.FromArgb(HierarchicalBitmapRenderer.GeometryOpacity, under), viewport);
+            mixed.FillPolygon(shape, Color.FromArgb(HierarchicalBitmapRenderer.GeometryOpacity, foreground), viewport);
+            using var image = mixed.ToBitmap();
+            var actual = image.GetPixel(4, 4);
+            foreach (var (b, u, f, a) in new[] { (background.R, under.R, foreground.R, actual.R),
+                (background.G, under.G, foreground.G, actual.G), (background.B, under.B, foreground.B, actual.B) })
+            {
+                var first = DecodeReference(b / 255.0) * (1 - alpha) + DecodeReference(u / 255.0) * alpha;
+                var expected = first * (1 - alpha) + DecodeReference(f / 255.0) * alpha;
+                Near(EncodeReference(expected), a, .51, "transparent overlap");
+            }
+        }
+        Near(128, HierarchicalBitmapRenderer.GeometryOpacity, 0, "layer transparency regression");
+        foreach (var layer in Enumerable.Range(0, 1024))
+        foreach (var dataType in new[] { 0, 1, 31 })
+        {
+            var color = HierarchicalBitmapRenderer.PaletteColor(layer, dataType);
+            var luminance = .2126 * DecodeReference(color.R / 255.0) +
+                .7152 * DecodeReference(color.G / 255.0) + .0722 * DecodeReference(color.B / 255.0);
+            if (luminance < .30) throw new InvalidOperationException("The dark-canvas palette contains a dark color.");
+        }
+    }
+
+    private static double DecodeReference(double value) => value <= .04045
+        ? value / 12.92 : Math.Pow((value + .055) / 1.055, 2.4);
+
+    private static double EncodeReference(double value) => 255 * (value <= .0031308
+        ? 12.92 * value : 1.055 * Math.Pow(value, 1 / 2.4) - .055);
 
     private static PointD[] Rectangle(double left, double top, double right, double bottom) =>
         [new(left, top), new(right, top), new(right, bottom), new(left, bottom)];

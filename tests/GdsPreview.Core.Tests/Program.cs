@@ -27,7 +27,8 @@ internal static class Program
         ("hierarchy and flattening have identical coverage", RenderingTests.Hierarchy),
         ("arrays have identical coverage to individual references", RenderingTests.Arrays),
         ("path widths and caps are geometric", RenderingTests.Paths),
-        ("sub-quantization geometry accumulates", RenderingTests.TinyGeometryAccumulates)
+        ("sub-quantization geometry accumulates", RenderingTests.TinyGeometryAccumulates),
+        ("linear-light colors and translucent layers", RenderingTests.LinearLightColors)
     ];
 
     private static int Main(string[] args)
@@ -222,15 +223,17 @@ internal static class Program
         // These 10x10 DBU boxes are only ~0.222 pixels wide at this fit scale.
         // A bright-pixel threshold tested the old one-pixel outlines, not the data.
         // Integrate their signal instead (roughly 493 covered pixels).
-        long signal = 0;
+        double signal = 0;
         for (var y = 0; y < bitmap.Height - 52; y++)
         for (var x = 0; x < bitmap.Width; x++)
         {
             var pixel = bitmap.GetPixel(x, y);
-            signal += Math.Max(pixel.R - 24, Math.Max(pixel.G - 27, pixel.B - 32));
+            signal += Math.Max(SrgbColorSpace.Decode(pixel.R) - SrgbColorSpace.Decode(24),
+                Math.Max(SrgbColorSpace.Decode(pixel.G) - SrgbColorSpace.Decode(27),
+                    SrgbColorSpace.Decode(pixel.B) - SrgbColorSpace.Decode(32)));
         }
         var expectedSignal = 10_000 * Math.Pow(444.0 / 19_990 * 10, 2) *
-            HierarchicalBitmapRenderer.GeometryOpacity / 255.0 * (242 - 27);
+            HierarchicalBitmapRenderer.GeometryOpacity / 255.0 * (SrgbColorSpace.Decode(242) - SrgbColorSpace.Decode(27));
         True(signal > expectedSignal * .75 && signal < expectedSignal * 1.05,
             $"Stored geometry has an unexpected integrated signal: {signal}.");
     }

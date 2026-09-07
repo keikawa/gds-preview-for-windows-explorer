@@ -30,20 +30,23 @@ internal sealed class CoverageRasterizer
         _blue = new float[length];
         _area = new double[length];
         _steps = new double[length];
-        Array.Fill(_red, background.R);
-        Array.Fill(_green, background.G);
-        Array.Fill(_blue, background.B);
+        Array.Fill(_red, SrgbColorSpace.Decode(background.R));
+        Array.Fill(_green, SrgbColorSpace.Decode(background.G));
+        Array.Fill(_blue, SrgbColorSpace.Decode(background.B));
     }
 
     public void FillBackground(RectangleF rectangle, Color color)
     {
+        var red = SrgbColorSpace.Decode(color.R);
+        var green = SrgbColorSpace.Decode(color.G);
+        var blue = SrgbColorSpace.Decode(color.B);
         for (var y = Math.Max(0, (int)Math.Floor(rectangle.Top)); y < Math.Min(_height, rectangle.Bottom); y++)
         for (var x = Math.Max(0, (int)Math.Floor(rectangle.Left)); x < Math.Min(_width, rectangle.Right); x++)
         {
             var index = y * _width + x;
-            _red[index] = color.R;
-            _green[index] = color.G;
-            _blue[index] = color.B;
+            _red[index] = red;
+            _green[index] = green;
+            _blue[index] = blue;
         }
     }
 
@@ -70,6 +73,9 @@ internal sealed class CoverageRasterizer
         var right = (int)Math.Ceiling(maxX);
         var top = (int)Math.Floor(minY);
         var bottom = (int)Math.Ceiling(maxY);
+        var red = SrgbColorSpace.Decode(color.R);
+        var green = SrgbColorSpace.Decode(color.G);
+        var blue = SrgbColorSpace.Decode(color.B);
 
         var previous = points[^1];
         foreach (var point in points)
@@ -91,9 +97,11 @@ internal sealed class CoverageRasterizer
                 var alpha = (float)(coverage * color.A / 255.0);
                 // Quantize only when exporting the completed frame. Tiny repeated
                 // shapes still contribute even if each is below one 8-bit level.
-                _red[index] += (color.R - _red[index]) * alpha;
-                _green[index] += (color.G - _green[index]) * alpha;
-                _blue[index] += (color.B - _blue[index]) * alpha;
+                // Coverage is linear light, not a multiplier on gamma-encoded
+                // display bytes. This changes color response, never geometry.
+                _red[index] += (red - _red[index]) * alpha;
+                _green[index] += (green - _green[index]) * alpha;
+                _blue[index] += (blue - _blue[index]) * alpha;
                 _area[index] = 0;
                 _steps[index] = 0;
             }
@@ -158,9 +166,9 @@ internal sealed class CoverageRasterizer
                 for (var x = 0; x < _width; x++)
                 {
                     var index = y * _width + x;
-                    output[x * 4] = (byte)Math.Clamp((int)Math.Round(_blue[index]), 0, 255);
-                    output[x * 4 + 1] = (byte)Math.Clamp((int)Math.Round(_green[index]), 0, 255);
-                    output[x * 4 + 2] = (byte)Math.Clamp((int)Math.Round(_red[index]), 0, 255);
+                    output[x * 4] = SrgbColorSpace.Encode(_blue[index]);
+                    output[x * 4 + 1] = SrgbColorSpace.Encode(_green[index]);
+                    output[x * 4 + 2] = SrgbColorSpace.Encode(_red[index]);
                     output[x * 4 + 3] = 255;
                 }
             }

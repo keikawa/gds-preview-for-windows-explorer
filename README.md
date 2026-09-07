@@ -115,7 +115,10 @@ flattened instance list; only vector outlines and scratch buffers are reused. Th
 per-cell bitmap caches, fixed-width polygon outlines, or minimum-pixel path widths.
 
 Antialiasing integrates polygon edge areas within each pixel. Polygon fills and path fills use
-the same layer color and opacity. Subpixel structures contribute proportionally to coverage;
+the same layer color and 50% material opacity so overlapping layers remain visible. The
+stable layer/datatype hues use brighter tints for the dark canvas. Color blending takes place
+in linear light, with sRGB encoding only at final output; coverage is not artificially boosted.
+Subpixel structures contribute proportionally to coverage;
 they can naturally become faint or indistinguishable at preview resolution. The preview is
 not a substitute for inspecting dimensions and connectivity in a layout editor. PATH caps
 0 (flat), 1 (round), and 2 (extended square) are supported; round caps are polygonally

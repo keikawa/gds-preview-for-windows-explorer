@@ -7,7 +7,8 @@ internal static class HierarchicalBitmapRenderer
 {
     // One material opacity for both PATH and BOUNDARY. Coverage, not a cosmetic
     // outline, controls the visibility of subpixel geometry.
-    internal const int GeometryOpacity = 220;
+    internal const int GeometryOpacity = 128;
+    internal static Color PaletteColor(int layer, int dataType) => Renderer.LayerColor(layer, dataType);
     public static Bitmap Render(GdsDocument document, int width, int height)
     {
         var allTopCells = document.GetTopCells();
@@ -353,11 +354,13 @@ internal static class HierarchicalBitmapRenderer
             return $"{meters:0.###e+0} m";
         }
 
-        private static Color LayerColor(int layer, int dataType)
+        public static Color LayerColor(int layer, int dataType)
         {
             var hash = unchecked((uint)(layer * 0x45D9F3B) ^ (uint)(dataType * 0x119DE1F3));
             var hue = hash % 360;
-            var chroma = 0.95 * 0.68;
+            // Preserve the stable layer/datatype hue mapping, but lift dark
+            // reds/blues for a dark canvas. Opacity is independent of coverage.
+            var chroma = 0.95 * 0.42;
             var x = chroma * (1 - Math.Abs(hue / 60.0 % 2 - 1));
             var m = 0.95 - chroma;
             (double r, double g, double b) = hue switch
