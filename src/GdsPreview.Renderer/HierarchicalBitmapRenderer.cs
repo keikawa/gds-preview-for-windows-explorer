@@ -19,6 +19,14 @@ internal static class HierarchicalBitmapRenderer
         return renderer.Render(topCells, width, height);
     }
 
+    internal static BoundsD ResolveBounds(GdsDocument document, GdsCell cell)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(cell);
+        using var renderer = new Renderer(document);
+        return renderer.ResolveBounds(cell, []);
+    }
+
     private sealed class Renderer : IDisposable
     {
         private const long MaximumCachedPixels = 32_000_000;
@@ -284,7 +292,7 @@ internal static class HierarchicalBitmapRenderer
             }
         }
 
-        private BoundsD ResolveBounds(GdsCell cell, HashSet<string> stack)
+        public BoundsD ResolveBounds(GdsCell cell, HashSet<string> stack)
         {
             if (_bounds.TryGetValue(cell.Name, out var known)) return known;
             if (!stack.Add(cell.Name)) return BoundsD.Empty;

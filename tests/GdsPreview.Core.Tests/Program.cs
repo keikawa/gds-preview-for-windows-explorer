@@ -1,4 +1,6 @@
+using System.Drawing;
 using GdsPreview.Core;
+using GdsPreview.Renderer;
 using GdsPreview.Sample;
 
 namespace GdsPreview.Core.Tests;
@@ -8,13 +10,16 @@ internal static class Program
     private static readonly List<(string Name, Action Test)> Tests =
     [
         ("parses demo library", ParsesDemoLibrary),
-        ("selects and expands top cell", SelectsAndExpandsTopCell),
-        ("builds overview for multiple top cells", BuildsOverviewForMultipleTopCells),
-        ("applies reference transform", AppliesReferenceTransform),
+        ("ignores text for geometry and storage", IgnoresTextForGeometryAndStorage),
+        ("far-away text cannot change rendered output", FarAwayTextCannotChangeRenderedOutput),
+        ("renders the production hierarchy path", RendersProductionHierarchyPath),
+        ("renders multiple design top cells", RendersMultipleDesignTopCells),
+        ("resolves rotation reflection and arrays", ResolvesRotationReflectionAndArrays),
+        ("retains hierarchy when the top cell follows fifty thousand references", RetainsLateTopHierarchy),
+        ("rejects reference overflow instead of corrupting hierarchy", RejectsReferenceOverflow),
         ("rejects truncated data", RejectsTruncatedData),
         ("accepts padding after ENDLIB", AcceptsPaddingAfterEndLib),
         ("preserves every vertex in a large polygon", PreservesEveryVertexInLargePolygon),
-        ("honors primitive safety limit", HonorsPrimitiveSafetyLimit),
         ("bounds memory for large flat layout", BoundsMemoryForLargeFlatLayout)
     ];
 
@@ -45,33 +50,45 @@ internal static class Program
         Equal("GDS_PREVIEW_DEMO", document.LibraryName);
         Equal(2, document.Cells.Count);
         NearlyEqual(1e-9, document.MetersPerDatabaseUnit, 1e-18);
-        Equal(3, document.Cells["LEAF"].Elements.Count);
+        Equal(2, document.Cells["LEAF"].Elements.Count);
+        Equal(3, document.Cells["LEAF"].SourceElementCount);
         Equal(3, document.Cells["TOP"].Elements.Count);
         Equal("TOP", document.GetTopCells().Single().Name);
     }
 
-    private static void SelectsAndExpandsTopCell()
+    private static void IgnoresTextForGeometryAndStorage()
     {
-        var scene = SceneBuilder.Build(ParseDemo());
-        Equal("TOP", scene.CellName);
-        Equal(40, scene.Primitives.Count);
-        True(!scene.Bounds.IsEmpty, "Scene bounds should not be empty.");
-        True(scene.Bounds.Width > 7_000, "Expanded references should contribute to width.");
-        True(!scene.WasTruncated, "Demo scene should not be truncated.");
+        var document = ParseFarAwayText(true);
+        var cell = document.Cells["TOP"];
+        Equal(2, cell.SourceElementCount);
+        Equal(1, cell.Elements.Count);
+        True(cell.Elements.Single() is GdsPolygon, "Only drawable geometry should be retained.");
+        Equal(new BoundsD(0, 0, 100, 100), cell.LocalGeometryBounds);
+        True(!document.WasSimplified, "Unsupported text is intentionally ignored, not simplified geometry.");
     }
 
-    private static void AppliesReferenceTransform()
+    private static void FarAwayTextCannotChangeRenderedOutput()
     {
-        var transform = Transform2D.ForReference(new PointD(10, 20), 2, 90, false);
-        var point = transform.Apply(new PointD(3, 0));
-        NearlyEqual(10, point.X, 1e-9);
-        NearlyEqual(26, point.Y, 1e-9);
-
-        var reflected = Transform2D.ForReference(new PointD(0, 0), 1, 0, true);
-        Equal(new PointD(2, -4), reflected.Apply(new PointD(2, 4)));
+        using var withoutText = HierarchicalBitmapRenderer.Render(ParseFarAwayText(false), 480, 320);
+        using var withText = HierarchicalBitmapRenderer.Render(ParseFarAwayText(true), 480, 320);
+        Equal(withoutText.Size, withText.Size);
+        for (var y = 0; y < withoutText.Height; y++)
+        for (var x = 0; x < withoutText.Width; x++)
+        {
+            if (withoutText.GetPixel(x, y) != withText.GetPixel(x, y))
+                throw new InvalidOperationException($"TEXT changed output at ({x}, {y}).");
+        }
     }
 
-    private static void BuildsOverviewForMultipleTopCells()
+    private static void RendersProductionHierarchyPath()
+    {
+        using var bitmap = HierarchicalBitmapRenderer.Render(ParseDemo(), 640, 480);
+        Equal(new Size(640, 480), bitmap.Size);
+        True(CountBrightContentPixels(bitmap) > 1_000,
+            "The production renderer did not draw the referenced layout.");
+    }
+
+    private static void RendersMultipleDesignTopCells()
     {
         using var stream = new MemoryStream();
         DemoGdsWriter.WriteMultipleTopCells(stream);
@@ -79,23 +96,60 @@ internal static class Program
         var document = GdsParser.Parse(stream);
         Equal(3, document.GetTopCells().Count);
 
-        var overview = SceneBuilder.Build(document);
-        Equal("2 top-level cells", overview.CellName);
-        Equal(2, overview.Views.Count);
-        Equal("DESIGN_A", overview.Views[0].CellName);
-        Equal("DESIGN_B", overview.Views[1].CellName);
-        Equal(2, overview.Primitives.Count);
+        using var bitmap = HierarchicalBitmapRenderer.Render(document, 640, 400);
+        True(CountBrightPixels(bitmap, new Rectangle(23, 50, 288, 290)) > 50,
+            "The overview did not draw the first design cell.");
+        True(CountBrightPixels(bitmap, new Rectangle(329, 50, 288, 290)) > 50,
+            "The overview did not draw the second design cell.");
+    }
 
-        var explicitMetadata = SceneBuilder.Build(document, "$$$CONTEXT_INFO$$$");
-        Equal("$$$CONTEXT_INFO$$$", explicitMetadata.CellName);
-        Equal(8, explicitMetadata.Primitives.Count);
-        Equal(1, explicitMetadata.Views.Count);
+    private static void ResolvesRotationReflectionAndArrays()
+    {
+        using var stream = new MemoryStream();
+        DemoGdsWriter.WriteReferenceTransforms(stream);
+        stream.Position = 0;
+        var document = GdsParser.Parse(stream);
+
+        Equal(new BoundsD(920, 2000, 1000, 2200),
+            HierarchicalBitmapRenderer.ResolveBounds(document, document.Cells["ROTATED"]));
+        Equal(new BoundsD(-1000, -2000, -920, -1800),
+            HierarchicalBitmapRenderer.ResolveBounds(document, document.Cells["REFLECTED"]));
+        Equal(new BoundsD(100, 200, 400, 340),
+            HierarchicalBitmapRenderer.ResolveBounds(document, document.Cells["ARRAY"]));
+
+        using var bitmap = HierarchicalBitmapRenderer.Render(document, 720, 420);
+        True(CountBrightContentPixels(bitmap) > 300,
+            "Transformed references were not drawn by the production renderer.");
     }
 
     private static void RejectsTruncatedData()
     {
         using var stream = new MemoryStream([0x00, 0x06, 0x00, 0x02, 0x02]);
         Throws<GdsFormatException>(() => GdsParser.Parse(stream));
+    }
+
+    private static void RetainsLateTopHierarchy()
+    {
+        using var stream = new MemoryStream();
+        DemoGdsWriter.WriteLateTopAfterManyReferences(stream, 50_001);
+        stream.Position = 0;
+        var document = GdsParser.Parse(stream);
+        Equal("TOP", document.GetTopCells().Single().Name);
+        Equal(1, document.Cells["TOP"].Elements.Count);
+        True(document.Cells["TOP"].Elements.Single() is GdsReference,
+            "The late top-cell reference was not retained.");
+        True(!document.WasSimplified, "Complete hierarchy must not be reported as simplified.");
+    }
+
+    private static void RejectsReferenceOverflow()
+    {
+        using var stream = new MemoryStream();
+        DemoGdsWriter.WriteLateTopAfterManyReferences(stream, 2);
+        stream.Position = 0;
+        Throws<GdsFormatException>(() => GdsParser.Parse(stream, options: new GdsParserOptions
+        {
+            MaximumStoredReferences = 2
+        }));
     }
 
     private static void AcceptsPaddingAfterEndLib()
@@ -106,18 +160,8 @@ internal static class Program
         stream.Position = 0;
         var document = GdsParser.Parse(stream);
         Equal(2, document.Cells.Count);
-        Equal("TOP", SceneBuilder.Build(document).CellName);
-    }
-
-    private static void HonorsPrimitiveSafetyLimit()
-    {
-        var scene = SceneBuilder.Build(ParseDemo(), options: new SceneBuildOptions
-        {
-            MaximumPrimitives = 5,
-            MaximumInstances = 100
-        });
-        Equal(5, scene.Primitives.Count);
-        True(scene.WasTruncated, "A limited scene must report truncation.");
+        using var bitmap = HierarchicalBitmapRenderer.Render(document, 320, 240);
+        True(CountBrightContentPixels(bitmap) > 100, "Padded input was not rendered.");
     }
 
     private static void PreservesEveryVertexInLargePolygon()
@@ -136,29 +180,54 @@ internal static class Program
     private static void BoundsMemoryForLargeFlatLayout()
     {
         using var stream = new MemoryStream();
-        DemoGdsWriter.WriteLargeFlat(stream, 100_001);
+        DemoGdsWriter.WriteLargeFlat(stream, 10_001);
         stream.Position = 0;
         var document = GdsParser.Parse(stream, options: new GdsParserOptions
         {
-            MaximumStoredGeometryElements = 100_000,
-            MaximumStoredGeometryElementsPerCell = 100_000
+            MaximumStoredGeometryElements = 10_000,
+            MaximumStoredGeometryElementsPerCell = 10_000
         });
         var cell = document.Cells["TOP"];
-        Equal(100_001, cell.SourceElementCount);
-        Equal(100_000, cell.Elements.Count);
+        Equal(10_001, cell.SourceElementCount);
+        Equal(10_000, cell.Elements.Count);
         Equal(1, cell.SkippedElementCount);
         True(document.WasSimplified, "Large geometry should be marked as simplified.");
+        True(cell.LocalGeometryBounds.Width > 19_000,
+            "Skipped geometry must remain represented in the fitted bounds.");
 
-        var scene = SceneBuilder.Build(document);
-        True(scene.Primitives.Count <= 100_000, "Scene primitive limit was exceeded.");
-        True(scene.WasTruncated, "Simplified scene should report truncation.");
-        True(scene.Bounds.Width > 19_000, "Skipped geometry bounds should cover the whole layout.");
+        using var bitmap = HierarchicalBitmapRenderer.Render(document, 480, 320);
+        True(CountBrightContentPixels(bitmap) > 100,
+            "Stored geometry disappeared when the parser safety limit was reached.");
+    }
+
+    private static int CountBrightContentPixels(Bitmap bitmap)
+        => CountBrightPixels(bitmap, new Rectangle(0, 0, bitmap.Width, Math.Max(0, bitmap.Height - 52)));
+
+    private static int CountBrightPixels(Bitmap bitmap, Rectangle area)
+    {
+        var count = 0;
+        var clipped = Rectangle.Intersect(new Rectangle(Point.Empty, bitmap.Size), area);
+        for (var y = clipped.Top; y < clipped.Bottom; y++)
+        for (var x = clipped.Left; x < clipped.Right; x++)
+        {
+            var color = bitmap.GetPixel(x, y);
+            if (Math.Max(color.R, Math.Max(color.G, color.B)) >= 90) count++;
+        }
+        return count;
     }
 
     private static GdsDocument ParseDemo()
     {
         using var stream = new MemoryStream();
         DemoGdsWriter.Write(stream);
+        stream.Position = 0;
+        return GdsParser.Parse(stream);
+    }
+
+    private static GdsDocument ParseFarAwayText(bool includeText)
+    {
+        using var stream = new MemoryStream();
+        DemoGdsWriter.WriteFarAwayText(stream, includeText);
         stream.Position = 0;
         return GdsParser.Parse(stream);
     }

@@ -53,9 +53,12 @@ $zig = if (Test-Path -LiteralPath $localZig) { $localZig } else {
 }
 if (-not $zig) { throw 'Zig 0.15 or newer is required to build the native preview DLL: https://ziglang.org/download/' }
 
-& $dotnet restore $testProject --configfile $configFile
+& $dotnet restore $testProject --configfile $configFile -p:Platform=x64
 if ($LASTEXITCODE -ne 0) { throw 'Test restore failed.' }
-& $dotnet run --project $testProject -c $Configuration --no-restore
+& $dotnet build $testProject -c $Configuration -p:Platform=x64 --no-restore -m:1 --disable-build-servers
+if ($LASTEXITCODE -ne 0) { throw 'Test build failed.' }
+$testExecutable = Join-Path (Split-Path -Parent $testProject) "bin\x64\$Configuration\net8.0-windows\GdsPreview.Core.Tests.exe"
+& $testExecutable
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
 
 & $dotnet restore $sampleProject --configfile $configFile

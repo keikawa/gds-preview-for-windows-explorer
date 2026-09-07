@@ -38,7 +38,7 @@ For a trusted GDS file, use **Properties > Unblock**.
 - Per-user installation without administrator privileges
 
 OASIS is not supported. A file with an OASIS payload and a `.gds` extension is reported as invalid
-GDSII.
+GDSII. GDSII `TEXT` labels are intentionally ignored and do not affect the fitted geometry bounds.
 
 ## Requirements
 
@@ -103,8 +103,7 @@ Defaults are intentionally conservative to protect Explorer:
 - Cells: 100,000
 - Retained geometry: 300,000 total and per cell
 - Retained vertices: 8,000,000
-- References: 50,000
-- Text records: 5,000
+- References: 1,000,000 (the preview fails instead of showing an incomplete hierarchy if exceeded)
 - Cached cell rasters: 32,000,000 pixels total, up to 4096 pixels per dimension
 - Renderer time: 6 seconds
 

@@ -59,15 +59,6 @@ public sealed record GdsPath(
     int PathType,
     IReadOnlyList<PointD> Points) : GdsElement;
 
-public sealed record GdsText(
-    int Layer,
-    int TextType,
-    string Value,
-    PointD Origin,
-    double Magnification,
-    double AngleDegrees,
-    bool ReflectXAxis) : GdsElement;
-
 public sealed record GdsReference(
     string CellName,
     PointD Origin,
