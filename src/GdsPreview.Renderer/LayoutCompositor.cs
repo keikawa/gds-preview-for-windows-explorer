@@ -23,10 +23,11 @@ internal sealed class LayoutCompositor(int length)
             Weight += weight;
         }
 
-        internal Vector3 Blend(Vector3 background, int opacity)
+        internal Vector3 Blend(Vector3 background, int opacity, float boost = 0)
         {
             if (Weight <= 0) return background;
-            var alpha = Math.Min(Weight, 1) * (opacity / 255f);
+            var coverage = Math.Min(Weight, 1);
+            var alpha = coverage * (1 + boost * (1 - coverage)) * (opacity / 255f);
             // Averaging colours prevents repeated enclosing fills from washing
             // out the frame. Capping alpha does not discard any geometry.
             return background + (Color / Weight - background) * alpha;
@@ -52,5 +53,5 @@ internal sealed class LayoutCompositor(int length)
     }
 
     internal Vector3 Blend(int index, Vector3 background) =>
-        _outline[index].Blend(_fill[index].Blend(background, FillOpacity), OutlineOpacity);
+        _outline[index].Blend(_fill[index].Blend(background, FillOpacity), OutlineOpacity, .5f);
 }

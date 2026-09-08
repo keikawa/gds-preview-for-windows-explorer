@@ -35,7 +35,8 @@ internal static class Program
         ("linear-light colors and translucent layers", RenderingTests.LinearLightColors),
         ("constant-time sRGB lookup preserves the exact quantizer", RenderingTests.ExactSrgbLookup),
         ("layout outlines stay inside true coverage", LayoutStyleTests.InwardOutline),
-        ("styled thin lines retain physical width and phase", LayoutStyleTests.ThinCoverage),
+        ("styled thin lines boost contrast without extending geometry", LayoutStyleTests.ThinCoverage),
+        ("outline contrast is bounded and applied after aggregation only", LayoutStyleTests.OutlineContrast),
         ("enclosing fills cannot erase later or earlier outlines", LayoutStyleTests.EnclosingFills),
         ("hole bridges do not create diagonal outlines", LayoutStyleTests.HoleBridge),
         ("clipping and reset do not create phantom outlines", LayoutStyleTests.ClippingAndReset),
@@ -353,7 +354,7 @@ internal static class Program
         using var bitmap = HierarchicalBitmapRenderer.Render(document, 480, 320);
         // These 10x10 DBU boxes are only ~0.222 pixels wide at this fit scale.
         // A bright-pixel threshold tested the old one-pixel outlines, not the data.
-        // Integrate their signal instead (roughly 493 covered pixels).
+        // Integrate their signal instead (roughly 493 covered pixels before contrast boost).
         double signal = 0;
         static double Luminance(Color c) => .2126 * SrgbColorSpace.Decode(c.R) +
             .7152 * SrgbColorSpace.Decode(c.G) + .0722 * SrgbColorSpace.Decode(c.B);
@@ -369,7 +370,8 @@ internal static class Program
         var palette = LayerPalette.ForBackground(Color.White);
         var expectedSignal = cell.Elements.OfType<GdsPolygon>().Sum(p =>
             backgroundLuminance - Luminance(palette[LayerPalette.IndexFor(p.Layer, p.DataType)])) *
-            Math.Pow(444.0 / 19_990 * 10, 2) * LayoutCompositor.OutlineOpacity / 255.0;
+            Math.Pow(444.0 / 19_990 * 10, 2) * LayoutCompositor.OutlineOpacity / 255.0 * 1.5;
+        // Each box covers < .05 pixel, so its contrast gain is close to 1.5 even when split across pixels.
         True(signal > expectedSignal * .75 && signal < expectedSignal * 1.05,
             $"Stored geometry has an unexpected integrated signal: {signal}.");
     }

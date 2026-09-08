@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Numerics;
 using GdsPreview.Core;
 using GdsPreview.Renderer;
 
@@ -37,31 +38,49 @@ internal static class LayoutStyleTests
             {
                 var coverage = Math.Max(0, Math.Min(i + 1, 30 + phase + width) - Math.Max(i, 30 + phase));
                 Pixel(image, vertical ? i : 40, vertical ? 40 : i,
-                    coverage * LayoutCompositor.OutlineOpacity / 255.0,
+                    OutlineAlpha(coverage),
                     $"physical width={width}, phase={phase}, vertical={vertical}");
             }
         }
-        // Oblique features must not gain pixels outside their analytical support,
-        // nor gain more light than a fully opaque true-coverage reference.
+        // Contrast is boosted, but only inside independently clipped geometry.
         foreach (var angle in new[] { 1, 17, 45, 89 })
         foreach (var clip in new[] { Canvas, new RectangleF(20.2f, 10.3f, 22.4f, 25.7f) })
         {
             var transform = Transform2D.ForReference(new PointD(32.17, 32.31), 1, angle, false);
             var points = Rectangle(-20, -.05, 20, .05).Select(transform.Apply).ToArray();
             var styled = NewSurface();
-            var raw = new ReferenceRasterizer(64, 64, Color.Black);
-            var thinReference = new ReferenceRasterizer(64, 64, Color.Black);
             styled.DrawLayoutPolygon(points, Color.White, clip);
-            raw.FillPolygon(points, Color.White, clip);
-            thinReference.FillPolygon(points, Color.FromArgb(LayoutCompositor.OutlineOpacity, Color.White), clip);
             using var actual = styled.ToBitmap();
-            using var reference = raw.ToBitmap();
-            using var expectedThin = thinReference.ToBitmap();
-            EqualImages(actual, expectedThin, 1); // Narrow oblique geometry is not dimmed with the outline width.
             for (var y = 0; y < 64; y++)
             for (var x = 0; x < 64; x++)
-                Require(actual.GetPixel(x, y).R <= reference.GetPixel(x, y).R,
-                    $"Expanded oblique feature at ({x}, {y}), angle={angle}.");
+            {
+                var coverage = RenderingTests.PixelArea(points, Math.Max(x, clip.Left), Math.Max(y, clip.Top),
+                    Math.Min(x + 1, clip.Right), Math.Min(y + 1, clip.Bottom));
+                Pixel(actual, x, y, OutlineAlpha(coverage), $"oblique contrast, angle={angle}");
+            }
+        }
+    }
+
+    public static void OutlineContrast()
+    {
+        // Independent curve anchors, both background extremes, and mixed colours.
+        foreach (var background in new[] { Vector3.Zero, Vector3.One, new Vector3(.01f, .02f, .03f) })
+        foreach (var (coverage, response) in new[] { (0f, 0f), (.1f, .145f), (.5f, .625f), (1f, 1f), (2f, 1f) })
+        {
+            var surface = new LayoutCompositor(3);
+            var color = new Vector3(.25f, 0, .75f);
+            surface.Add(0, color, coverage, coverage);
+            surface.Add(1, Vector3.UnitX, coverage * .25, coverage * .25);
+            surface.Add(1, Vector3.UnitZ, coverage * .75, coverage * .75);
+            surface.Add(2, color, coverage, 0);
+            var expected = background + (color - background) * (response * 240 / 255f);
+            Require(Vector3.Distance(surface.Blend(0, background), expected) < 1e-6,
+                "Outline curve endpoints or contrast changed.");
+            Require(Vector3.Distance(surface.Blend(1, background), expected) < 1e-6,
+                "Boost must happen after aggregation without changing mixed colour weights.");
+            var fill = background + (color - background) * (Math.Min(coverage, 1) * 32 / 255f);
+            Require(Vector3.Distance(surface.Blend(2, background), fill) < 1e-6,
+                "Outline contrast must not boost enclosing fills.");
         }
     }
 
@@ -159,7 +178,7 @@ internal static class LayoutStyleTests
         for (var i = 0; i < 1000; i++)
             surface.DrawLayoutPolygon(Rectangle(5.1, 5.1, 5.11, 5.11), Color.White, Canvas);
         using var image = surface.ToBitmap();
-        Pixel(image, 5, 5, .1 * LayoutCompositor.OutlineOpacity / 255.0, "sub-quantization areas accumulate before export");
+        Pixel(image, 5, 5, OutlineAlpha(.1), "sub-quantization areas accumulate before export");
         Pixel(image, 4, 5, 0, "tiny geometry cannot expand");
     }
 
@@ -258,9 +277,12 @@ internal static class LayoutStyleTests
     private static double StyledWhite(double coverage, double outline)
     {
         var fillAlpha = (coverage - outline) * LayoutCompositor.FillOpacity / 255.0;
-        var outlineAlpha = outline * LayoutCompositor.OutlineOpacity / 255.0;
+        var outlineAlpha = OutlineAlpha(outline);
         return fillAlpha + (1 - fillAlpha) * outlineAlpha;
     }
+
+    private static double OutlineAlpha(double coverage) =>
+        (coverage + .5 * coverage * (1 - coverage)) * LayoutCompositor.OutlineOpacity / 255.0;
 
     private static CoverageRasterizer NewSurface() => new(64, 64, Color.Black);
     private static PointD[] Rectangle(double l, double t, double r, double b) =>

@@ -28,10 +28,14 @@ ratio on white or arbitrary host backgrounds; subpixel coverage still limits con
 ## Fill and outlines
 
 The renderer keeps two area-weighted linear-RGB accumulators: one for interiors,
-one for inward boundaries. Each averages its contributed colours and uses
-`min(total weight, 1) * opacity`. Interior opacity is capped at 32/255, regardless
-of how many filled polygons overlap. Boundaries are composited afterwards, with
-opacity up to 240/255. A large enclosing interior cannot overwrite a smaller
+one for inward boundaries. Each averages its contributed colours with their original
+area weights. With `c = min(total weight, 1)`, interiors use `c * 32/255`, regardless
+of how many filled polygons overlap. Boundaries are composited afterwards using
+`(c + 0.5*c*(1-c)) * 240/255`. This mild contrast boost is applied once after
+aggregation, not per polygon; zero/full coverage and mixed colour weights stay
+unchanged. It adds no pass or buffer. Brightness is no longer proportional to area:
+outlines may look thicker and contrast varies with pixel alignment, although no
+geometric width or pixel support is expanded. A large enclosing interior cannot overwrite a smaller
 shape's boundary. Drawing order does not determine which colour wins (apart from
 floating-point rounding). This is a layout display style, not physical source-over
 transparency, Boolean layer union, or foundry layer-depth semantics. Coincident

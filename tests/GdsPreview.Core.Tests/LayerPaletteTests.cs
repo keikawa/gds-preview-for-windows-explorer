@@ -108,7 +108,7 @@ internal static class LayerPaletteTests
             foreach (var (x, y, coverage, outline) in new[] { (1, 3, 1d, .5), (3, 3, 1d, 0d) })
             {
                 var fillAlpha = (coverage - outline) * LayoutCompositor.FillOpacity / 255.0;
-                var outlineAlpha = outline * LayoutCompositor.OutlineOpacity / 255.0;
+                var outlineAlpha = (outline + .5 * outline * (1 - outline)) * LayoutCompositor.OutlineOpacity / 255.0;
                 var alpha = fillAlpha + (1 - fillAlpha) * outlineAlpha;
                 var actual = image.GetPixel(x, y);
                 foreach (var (source, channel) in new[] { (color.R, actual.R), (color.G, actual.G), (color.B, actual.B) })

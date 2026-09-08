@@ -43,12 +43,13 @@ GDSII is supported. OASIS files are not supported.
 - Support: https://github.com/keikawa/gds-preview-for-windows-explorer/issues
 - Privacy policy: https://github.com/keikawa/gds-preview-for-windows-explorer/blob/main/PRIVACY.md
 
-## What's new in 0.2.1.0
+## What's new in 0.3.0.0
 
-Updated the app icon across the Microsoft Store and Windows package. This release also includes
-hierarchical cached rendering for dense GDSII layouts: repeated cells, arrays, and multiple top-level
-cells remain complete without flattening millions of instances. Fine structures remain visible at
-overview scale, while complete polygon vertex sequences prevent incorrect diagonal edges.
+Improved top-cell selection and hierarchy handling, with streamed final-grid rendering for dense
+layouts. Updated layer coloring and overlapping-shape outlines, with a mild contrast boost for fine
+lines. The preview now follows Windows app light/dark mode, and cell names and status messages use
+larger text. GDSII text labels are intentionally omitted. Files are processed locally, with bounded
+memory and the existing six-second renderer timeout.
 
 ## Search terms
 

@@ -66,14 +66,14 @@ written under `artifacts\GdsPreview`.
 Create a release ZIP after a successful build:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1 -Version 0.2.1
+powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1 -Version 0.3.0
 ```
 
 Create a self-contained x64 MSIX for Microsoft Store submission:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\package-msix.ps1 `
-  -Version 0.2.1.0
+  -Version 0.3.0.0
 ```
 
 This requires the Windows 10/11 SDK in addition to the normal build dependencies. Store identity,
@@ -137,7 +137,8 @@ Different pairs can still share
 a color, and color differences can be difficult to perceive in dense overlaps. See
 [the palette design and validation notes](docs/LAYER-COLORS.md). Color blending takes place
 in linear light, with sRGB encoding only at final output. Contributions are weighted by
-covered area, and outlines never extend into uncovered pixels. Subpixel structures can
+covered area; a mild contrast curve is applied once to the accumulated outline coverage,
+without extending geometry into uncovered pixels. Subpixel structures can
 contribute less than a whole pixel;
 they can naturally become faint or indistinguishable at preview resolution. The preview is
 not a substitute for inspecting dimensions and connectivity in a layout editor. PATH caps
