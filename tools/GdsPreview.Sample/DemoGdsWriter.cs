@@ -90,6 +90,70 @@ public static class DemoGdsWriter
         Record(stream, 0x04, 0x00);
     }
 
+    public static void WriteFarAwayText(Stream stream, bool includeText)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        Record(stream, 0x00, 0x02, Int16(600));
+        Record(stream, 0x01, 0x02, Dates());
+        Record(stream, 0x02, 0x06, Ascii("GDS_PREVIEW_TEXT_BOUNDS"));
+        Record(stream, 0x03, 0x05, Real8(0.001), Real8(1e-9));
+        BeginStructure(stream, "TOP");
+        Boundary(stream, 1, 0, [(0, 0), (100, 0), (100, 100), (0, 100), (0, 0)]);
+        if (includeText) Text(stream, 99, 0, "FAR AWAY", (1_000_000_000, 1_000_000_000));
+        Record(stream, 0x07, 0x00);
+        Record(stream, 0x04, 0x00);
+    }
+
+    public static void WriteReferenceTransforms(Stream stream)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        Record(stream, 0x00, 0x02, Int16(600));
+        Record(stream, 0x01, 0x02, Dates());
+        Record(stream, 0x02, 0x06, Ascii("GDS_PREVIEW_TRANSFORMS"));
+        Record(stream, 0x03, 0x05, Real8(0.001), Real8(1e-9));
+
+        BeginStructure(stream, "LEAF");
+        Boundary(stream, 1, 0, [(0, 0), (100, 0), (100, 40), (0, 40), (0, 0)]);
+        Record(stream, 0x07, 0x00);
+
+        BeginStructure(stream, "ROTATED");
+        SRef(stream, "LEAF", (1000, 2000), 2, 90, false);
+        Record(stream, 0x07, 0x00);
+
+        BeginStructure(stream, "REFLECTED");
+        SRef(stream, "LEAF", (-1000, -2000), 2, 90, true);
+        Record(stream, 0x07, 0x00);
+
+        BeginStructure(stream, "ARRAY");
+        ARef(stream, "LEAF", 3, 2, (100, 200), (400, 200), (100, 400));
+        Record(stream, 0x07, 0x00);
+        Record(stream, 0x04, 0x00);
+    }
+
+    public static void WriteLateTopAfterManyReferences(Stream stream, int childReferenceCount)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        if (childReferenceCount < 1) throw new ArgumentOutOfRangeException(nameof(childReferenceCount));
+        Record(stream, 0x00, 0x02, Int16(600));
+        Record(stream, 0x01, 0x02, Dates());
+        Record(stream, 0x02, 0x06, Ascii("GDS_PREVIEW_LATE_TOP"));
+        Record(stream, 0x03, 0x05, Real8(0.001), Real8(1e-9));
+
+        BeginStructure(stream, "LEAF");
+        Boundary(stream, 1, 0, [(0, 0), (10, 0), (10, 10), (0, 10), (0, 0)]);
+        Record(stream, 0x07, 0x00);
+
+        BeginStructure(stream, "MANY_REFERENCES");
+        for (var index = 0; index < childReferenceCount; index++)
+            SRef(stream, "LEAF", (index * 20, 0), 1, 0, false);
+        Record(stream, 0x07, 0x00);
+
+        BeginStructure(stream, "TOP");
+        SRef(stream, "MANY_REFERENCES", (0, 0), 1, 0, false);
+        Record(stream, 0x07, 0x00);
+        Record(stream, 0x04, 0x00);
+    }
+
     private static void BeginStructure(Stream stream, string name)
     {
         Record(stream, 0x05, 0x02, Dates());

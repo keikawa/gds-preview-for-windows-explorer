@@ -15,4 +15,9 @@
   <ItemGroup>
     <ProjectReference Include="..\GdsPreview.Core\GdsPreview.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>GdsPreview.Core.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>

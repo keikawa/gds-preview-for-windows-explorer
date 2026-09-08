@@ -38,6 +38,7 @@ $publishDirectory = Join-Path $repoRoot 'artifacts\GdsPreview'
 $sampleFile = Join-Path $repoRoot 'samples\demo.gds'
 $smokeImage = Join-Path $repoRoot 'artifacts\native-preview.bmp'
 $initialResizeImage = Join-Path $repoRoot 'artifacts\initial-resize-preview.bmp'
+$resizeImage = Join-Path $repoRoot 'artifacts\resize-preview.bmp'
 $nativeSource = Join-Path $repoRoot 'native\GdsPreview.Native.cpp'
 $nativeDefinition = Join-Path $repoRoot 'native\GdsPreview.Native.def'
 $nativeSmokeSource = Join-Path $repoRoot 'native\NativeSmoke.cpp'
@@ -53,9 +54,12 @@ $zig = if (Test-Path -LiteralPath $localZig) { $localZig } else {
 }
 if (-not $zig) { throw 'Zig 0.15 or newer is required to build the native preview DLL: https://ziglang.org/download/' }
 
-& $dotnet restore $testProject --configfile $configFile
+& $dotnet restore $testProject --configfile $configFile -p:Platform=x64
 if ($LASTEXITCODE -ne 0) { throw 'Test restore failed.' }
-& $dotnet run --project $testProject -c $Configuration --no-restore
+& $dotnet build $testProject -c $Configuration -p:Platform=x64 --no-restore -m:1 --disable-build-servers
+if ($LASTEXITCODE -ne 0) { throw 'Test build failed.' }
+$testExecutable = Join-Path (Split-Path -Parent $testProject) "bin\x64\$Configuration\net8.0-windows\GdsPreview.Core.Tests.exe"
+& $testExecutable
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
 
 & $dotnet restore $sampleProject --configfile $configFile
@@ -74,16 +78,39 @@ if ($LASTEXITCODE -ne 0) { throw 'Renderer publish failed.' }
 
 $env:ZIG_GLOBAL_CACHE_DIR = (New-Item -ItemType Directory -Force (Join-Path $repoRoot '.codex-tmp\zig-global-cache')).FullName
 $env:ZIG_LOCAL_CACHE_DIR = (New-Item -ItemType Directory -Force (Join-Path $repoRoot '.codex-tmp\zig-local-cache')).FullName
-& $zig c++ -target x86_64-windows-gnu -std=c++17 -O2 -shared $nativeSource $nativeDefinition -o $nativeDll -lole32 -luuid -luser32 -lgdi32
+& $zig c++ -target x86_64-windows-gnu -std=c++17 -O2 -shared $nativeSource $nativeDefinition -o $nativeDll -lole32 -luuid -luser32 -lgdi32 -ladvapi32
 if ($LASTEXITCODE -ne 0) { throw 'Native handler build failed.' }
 & $zig c++ -target x86_64-windows-gnu -std=c++17 -O2 -municode $launcherSource -o $launcher -lshell32 -luser32
 if ($LASTEXITCODE -ne 0) { throw 'Native launcher build failed.' }
-& $zig c++ -target x86_64-windows-gnu -std=c++17 -O2 -municode $nativeSmokeSource -o $nativeSmoke -lole32 -luuid -luser32 -lgdi32
+& $zig c++ -target x86_64-windows-gnu -std=c++17 -O2 -municode $nativeSmokeSource -o $nativeSmoke -lole32 -luuid -luser32 -lgdi32 -ladvapi32
 if ($LASTEXITCODE -ne 0) { throw 'Native smoke-host build failed.' }
 & $nativeSmoke $nativeDll $sampleFile $smokeImage 4000
 if ($LASTEXITCODE -ne 0) { throw 'Native end-to-end preview test failed.' }
 & $nativeSmoke --initial-resize $nativeDll $sampleFile $initialResizeImage 4000
 if ($LASTEXITCODE -ne 0) { throw 'Initial resize preview regression test failed.' }
+& $nativeSmoke --resize $nativeDll $sampleFile $resizeImage 4000
+if ($LASTEXITCODE -ne 0) { throw 'Settled resize preview regression test failed.' }
+foreach ($image in @($smokeImage, $initialResizeImage, $resizeImage)) {
+    & $testExecutable --verify-preview $sampleFile $image system
+    if ($LASTEXITCODE -ne 0) { throw 'Native final-grid pixel verification failed.' }
+}
+# Simulate OS queries only in a separate, non-shipping DLL. The production DLL
+# has no theme override. No test changes the user's registry or global theme.
+$themeDirectory = New-Item -ItemType Directory -Force (Join-Path $repoRoot 'artifacts\theme-tests')
+$themeDll = Join-Path $themeDirectory.FullName 'GdsPreview.ThemeTest.dll'
+& $zig c++ -target x86_64-windows-gnu -std=c++17 -O2 -shared (Join-Path $repoRoot 'native\ThemeTestHandler.cpp') $nativeDefinition -o $themeDll -lole32 -luuid -luser32 -lgdi32 -ladvapi32
+if ($LASTEXITCODE -ne 0) { throw 'Theme test handler build failed.' }
+foreach ($file in @('GdsPreview.Renderer.exe', 'GdsPreview.Renderer.dll', 'GdsPreview.Renderer.deps.json', 'GdsPreview.Renderer.runtimeconfig.json', 'GdsPreview.Core.dll')) {
+    Copy-Item -LiteralPath (Join-Path $publishDirectory $file) -Destination $themeDirectory.FullName -Force
+}
+$themes = [ordered]@{ '--light' = 'light'; '--dark' = 'dark'; '--theme-change' = 'dark'; '--theme-change-light' = 'light'; '--high-contrast' = 'high-contrast'; '--missing-theme' = 'light' }
+foreach ($mode in $themes.Keys) {
+    $themeImage = Join-Path $repoRoot ("artifacts\{0}-preview.bmp" -f $mode.TrimStart('-'))
+    & $nativeSmoke $mode $themeDll $sampleFile $themeImage 4000
+    if ($LASTEXITCODE -ne 0) { throw "Native theme test failed: $mode" }
+    & $testExecutable --verify-preview $sampleFile $themeImage $themes[$mode]
+    if ($LASTEXITCODE -ne 0) { throw "Native theme pixel verification failed: $mode" }
+}
 
 $timeoutDirectory = New-Item -ItemType Directory -Force (Join-Path $repoRoot '.codex-tmp\timeout-isolation')
 $hangRenderer = Join-Path $timeoutDirectory.FullName 'GdsPreview.Renderer.exe'

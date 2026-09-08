@@ -12,8 +12,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         L"GDS Preview for Windows Explorer is installed.\n\n"
         L"1. Open File Explorer.\n"
         L"2. Enable the preview pane with Alt+P.\n"
-        L"3. Select a .gds or .gdsii file.\n\n"
-        L"The preview is rendered in an isolated process to protect Explorer.";
+        L"3. Select a .gds or .gdsii file.";
 
     if (arguments && argument_count > 1) {
         std::wstring message = instructions;

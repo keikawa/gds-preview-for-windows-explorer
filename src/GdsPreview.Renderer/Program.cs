@@ -14,7 +14,8 @@ internal static class Program
             var options = ParseArguments(args);
             shared = new SharedPreview(options.MappingHandle, options.Width, options.Height);
             var document = GdsParser.ParseFile(options.FilePath);
-            using var bitmap = HierarchicalBitmapRenderer.Render(document, options.Width, options.Height);
+            using var bitmap = HierarchicalBitmapRenderer.Render(document, options.Width, options.Height,
+                options.Background, options.Text);
             var rectangle = new Rectangle(0, 0, bitmap.Width, bitmap.Height);
             var data = bitmap.LockBits(rectangle, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
             try { shared.CopyPixels(data.Scan0, data.Stride); }
@@ -39,6 +40,8 @@ internal static class Program
         var width = 0;
         var height = 0;
         string? file = null;
+        var background = Color.White;
+        var text = Color.FromArgb(40, 40, 40);
         for (var index = 0; index + 1 < args.Length; index += 2)
         {
             switch (args[index])
@@ -47,11 +50,13 @@ internal static class Program
                 case "--width": width = int.Parse(args[index + 1]); break;
                 case "--height": height = int.Parse(args[index + 1]); break;
                 case "--file": file = args[index + 1]; break;
+                case "--background": background = ColorTranslator.FromWin32(int.Parse(args[index + 1])); break;
+                case "--text": text = ColorTranslator.FromWin32(int.Parse(args[index + 1])); break;
             }
         }
         if (mapping == 0 || width < 1 || height < 1 || string.IsNullOrWhiteSpace(file))
             throw new ArgumentException("Invalid renderer arguments.");
-        return new Options(mapping, width, height, file);
+        return new Options(mapping, width, height, file, background, text);
     }
 
     private static string FormatError(Exception exception) => exception switch
@@ -62,5 +67,6 @@ internal static class Program
         _ => $"Preview rendering failed.\r\n{exception.Message}"
     };
 
-    private sealed record Options(nint MappingHandle, int Width, int Height, string FilePath);
+    private sealed record Options(nint MappingHandle, int Width, int Height, string FilePath,
+        Color Background, Color Text);
 }

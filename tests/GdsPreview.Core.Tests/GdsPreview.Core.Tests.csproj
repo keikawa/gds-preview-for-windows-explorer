@@ -1,13 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>x64</Platforms>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\GdsPreview.Core\GdsPreview.Core.csproj" />
+    <ProjectReference Include="..\..\src\GdsPreview.Renderer\GdsPreview.Renderer.csproj" />
     <Compile Include="..\..\tools\GdsPreview.Sample\DemoGdsWriter.cs" Link="DemoGdsWriter.cs" />
   </ItemGroup>
 </Project>

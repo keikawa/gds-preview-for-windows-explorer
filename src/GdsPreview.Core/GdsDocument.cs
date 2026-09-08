@@ -45,7 +45,6 @@ public sealed class GdsCell(string name)
     public BoundsD LocalGeometryBounds { get; internal set; } = BoundsD.Empty;
     public int SourceElementCount { get; internal set; }
     public int SkippedElementCount { get; internal set; }
-    internal int StoredGeometryCount { get; set; }
 }
 
 public abstract record GdsElement;
@@ -58,15 +57,6 @@ public sealed record GdsPath(
     double Width,
     int PathType,
     IReadOnlyList<PointD> Points) : GdsElement;
-
-public sealed record GdsText(
-    int Layer,
-    int TextType,
-    string Value,
-    PointD Origin,
-    double Magnification,
-    double AngleDegrees,
-    bool ReflectXAxis) : GdsElement;
 
 public sealed record GdsReference(
     string CellName,
