@@ -80,7 +80,7 @@ $env:ZIG_GLOBAL_CACHE_DIR = (New-Item -ItemType Directory -Force (Join-Path $rep
 $env:ZIG_LOCAL_CACHE_DIR = (New-Item -ItemType Directory -Force (Join-Path $repoRoot '.codex-tmp\zig-local-cache')).FullName
 & $zig c++ -target x86_64-windows-gnu -std=c++17 -O2 -shared $nativeSource $nativeDefinition -o $nativeDll -lole32 -luuid -luser32 -lgdi32 -ladvapi32
 if ($LASTEXITCODE -ne 0) { throw 'Native handler build failed.' }
-& $zig c++ -target x86_64-windows-gnu -std=c++17 -O2 -municode $launcherSource -o $launcher -lshell32 -luser32
+& $zig c++ -target x86_64-windows-gnu -std=c++17 -O2 -municode '-Wl,--subsystem,windows' $launcherSource -o $launcher -luser32
 if ($LASTEXITCODE -ne 0) { throw 'Native launcher build failed.' }
 & $zig c++ -target x86_64-windows-gnu -std=c++17 -O2 -municode $nativeSmokeSource -o $nativeSmoke -lole32 -luuid -luser32 -lgdi32 -ladvapi32
 if ($LASTEXITCODE -ne 0) { throw 'Native smoke-host build failed.' }

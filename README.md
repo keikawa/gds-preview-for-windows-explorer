@@ -67,14 +67,14 @@ written under `artifacts\GdsPreview`.
 Create a release ZIP after a successful build:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1 -Version 0.3.0
+powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1 -Version 0.3.1
 ```
 
 Create a self-contained x64 MSIX for Microsoft Store submission:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\package-msix.ps1 `
-  -Version 0.3.0.0
+  -Version 0.3.1.0
 ```
 
 This requires the Windows 10/11 SDK in addition to the normal build dependencies. Store identity,

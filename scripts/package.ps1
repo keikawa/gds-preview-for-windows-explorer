@@ -47,7 +47,6 @@ Copy-Item -LiteralPath (Join-Path $repoRoot 'install.cmd') -Destination $staging
 Copy-Item -LiteralPath (Join-Path $repoRoot 'uninstall.cmd') -Destination $stagingDirectory
 Copy-Item -LiteralPath (Join-Path $repoRoot 'README.md') -Destination $stagingDirectory
 Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination $stagingDirectory
-Copy-Item -LiteralPath (Join-Path $repoRoot 'samples\demo.gds') -Destination $stagingDirectory
 Set-Content -LiteralPath (Join-Path $stagingDirectory 'VERSION') -Value $Version -Encoding ascii
 
 Compress-Archive -LiteralPath $stagingDirectory -DestinationPath $archivePath -CompressionLevel Optimal

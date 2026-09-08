@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+\.\d+$')]
-    [string]$Version = '0.3.0.0',
+    [string]$Version = '0.3.1.0',
     [ValidatePattern('^[A-Za-z0-9.-]{3,50}$')]
     [string]$IdentityName = 'keikawa.GDSPreviewforWindowsExplorer',
     [string]$Publisher = 'CN=915278F7-D39C-4A79-8E88-5A30F45250CB',
@@ -137,7 +137,6 @@ foreach ($directory in $staging, $rendererPublish, $verificationDirectory) {
     New-Item -ItemType Directory -Path $directory | Out-Null
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $staging 'Assets') | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $staging 'Samples') | Out-Null
 if (Test-Path -LiteralPath $packagePath) { Remove-Item -LiteralPath $packagePath -Force }
 
 $rendererProject = Join-Path $repoRoot 'src\GdsPreview.Renderer\GdsPreview.Renderer.csproj'
@@ -152,11 +151,11 @@ Get-ChildItem -LiteralPath $rendererPublish -File |
     Where-Object Extension -NotIn '.pdb', '.xml' |
     Copy-Item -Destination $staging
 Copy-Item -LiteralPath $nativeDll -Destination $staging
-Copy-Item -LiteralPath (Join-Path $repoRoot 'samples\demo.gds') -Destination (Join-Path $staging 'Samples')
+Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination (Join-Path $staging 'LICENSE.txt')
 
 $launcherSource = Join-Path $repoRoot 'native\GdsPreview.App.cpp'
 $launcher = Join-Path $staging 'GdsPreview.App.exe'
-& $zig c++ -target x86_64-windows-gnu -std=c++17 -O2 -municode $launcherSource -o $launcher -lshell32 -luser32
+& $zig c++ -target x86_64-windows-gnu -std=c++17 -O2 -municode '-Wl,--subsystem,windows' $launcherSource -o $launcher -luser32
 if ($LASTEXITCODE -ne 0) { throw 'MSIX launcher build failed.' }
 Remove-Item -LiteralPath ([System.IO.Path]::ChangeExtension($launcher, '.pdb')) -Force -ErrorAction SilentlyContinue
 
