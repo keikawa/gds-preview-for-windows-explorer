@@ -56,7 +56,7 @@ if ($VerifyPayload) {
         $application.Executable,
         $comClass.Path,
         'GdsPreview.Renderer.exe',
-        'Samples\demo.gds',
+        'LICENSE.txt',
         'Assets\StoreLogo.png',
         'Assets\Square44x44Logo.png',
         'Assets\Square150x150Logo.png',
@@ -68,14 +68,21 @@ if ($VerifyPayload) {
         }
     }
 
+    foreach ($executable in @($application.Executable, 'GdsPreview.Renderer.exe')) {
+        $bytes = [System.IO.File]::ReadAllBytes((Join-Path $payloadRoot $executable))
+        $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+        if ([BitConverter]::ToUInt16($bytes, $peOffset + 24 + 68) -ne 2) {
+            throw "MSIX executable must use the GUI subsystem, not open a console: $executable"
+        }
+    }
+
     $debugFiles = @(Get-ChildItem -LiteralPath $payloadRoot -Recurse -File -Filter '*.pdb')
     if ($debugFiles.Count -gt 0) {
         throw "MSIX payload must not contain debug symbols: $($debugFiles.Name -join ', ')"
     }
 
-    $allowedLayout = [System.IO.Path]::GetFullPath((Join-Path $payloadRoot 'Samples\demo.gds'))
     $unexpectedLayouts = @(Get-ChildItem -LiteralPath $payloadRoot -Recurse -File |
-        Where-Object { $_.Extension -in '.gds', '.gdsii', '.oas' -and $_.FullName -ne $allowedLayout })
+        Where-Object { $_.Extension -in '.gds', '.gdsii', '.oas' })
     if ($unexpectedLayouts.Count -gt 0) {
         throw "MSIX payload contains an unexpected layout file: $($unexpectedLayouts.Name -join ', ')"
     }

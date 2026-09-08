@@ -43,13 +43,12 @@ GDSII is supported. OASIS files are not supported.
 - Support: https://github.com/keikawa/gds-preview-for-windows-explorer/issues
 - Privacy policy: https://github.com/keikawa/gds-preview-for-windows-explorer/blob/main/PRIVACY.md
 
-## What's new in 0.3.0.0
+## What's new in 0.3.1.0
 
-Improved top-cell selection and hierarchy handling, with streamed final-grid rendering for dense
-layouts. Updated layer coloring and overlapping-shape outlines, with a mild contrast boost for fine
-lines. The preview now follows Windows app light/dark mode, and cell names and status messages use
-larger text. GDSII text labels are intentionally omitted. Files are processed locally, with bounded
-memory and the existing six-second renderer timeout.
+Replaced the demo prompt with a simple About dialog containing usage, copyright, MIT License
+information and the GitHub repository URL. Fixed an unwanted console window when launching the
+app. Demo files are no longer bundled or copied to user folders. Preview rendering is unchanged
+from version 0.3.0.
 
 ## Search terms
 
@@ -63,10 +62,12 @@ or register itself as the default application for GDSII files.
 Test procedure:
 
 1. Launch **GDS Preview for Windows Explorer** from Start.
-2. Choose **Yes** to copy and select the included `demo.gds` file.
-3. In the Explorer window, enable the preview pane with Alt+P.
-4. Select `demo.gds`; its colored layout should appear in the preview pane.
+2. Verify the About dialog shows copyright, MIT License information and the GitHub repository URL, with no console or Explorer window opening; close it.
+3. Open Explorer and enable the preview pane with Alt+P.
+4. Select a non-confidential `.gds` file; its colored layout should appear in the preview pane.
 5. If Explorer was already running during installation, close and reopen its windows before testing.
+
+The synthetic `samples/demo.gds` in the source repository can be used for testing; no demo files are bundled with the app.
 
 The `runFullTrust` capability is required because the product is a native in-process COM preview
 handler hosted by Windows PreviewHost and it launches a separate local renderer process. The

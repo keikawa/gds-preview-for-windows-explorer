@@ -26,10 +26,10 @@ Build the submission package with:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\package-msix.ps1 `
-  -Version 0.3.0.0
+  -Version 0.3.1.0
 ```
 
-The output is `artifacts\msix\GDS-Preview-for-Windows-Explorer-0.3.0.0-x64.msix`. The package is
+The output is `artifacts\msix\GDS-Preview-for-Windows-Explorer-0.3.1.0-x64.msix`. The package is
 left unsigned for Partner Center, which signs the certified package.
 
 MSIX versions have four numeric parts, each from 0 through 65535. Prerelease suffixes such as
@@ -45,7 +45,7 @@ manifest Publisher. If the certificate is already in the current user's certific
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\package-msix.ps1 `
-  -Version 0.3.0.0 `
+  -Version 0.3.1.0 `
   -CertificateThumbprint '<certificate SHA-1 thumbprint>'
 ```
 
@@ -71,11 +71,10 @@ The package declares the restricted `runFullTrust` capability. Copy the justific
 
 ## Package architecture
 
-- `GdsPreview.App.exe` is the small Start-menu status/instructions application.
+- `GdsPreview.App.exe` shows a small About dialog with usage, copyright, MIT License information and the GitHub repository URL, without opening a console.
 - `GdsPreview.Native.dll` is registered as a packaged COM class under the system PreviewHost.
 - `GdsPreview.Renderer.exe` is published self-contained for `win-x64`; Store users do not need to
   install the .NET Desktop Runtime separately.
 - `.gds` and `.gdsii` use `desktop2:DesktopPreviewHandler`, whose CLSID must remain identical to the
   packaged COM class ID.
-- `Samples\demo.gds` is copied to the user's local app-data folder only when they request the demo
-  from the Start-menu app.
+- `LICENSE.txt` contains the app's MIT license. No demo layout files are bundled or copied to user folders.
