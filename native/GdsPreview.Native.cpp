@@ -160,10 +160,7 @@ public:
     // Use one Windows-derived pair for both the native window and the bitmap.
     IFACEMETHODIMP SetBackgroundColor(COLORREF) override { return S_OK; }
 
-    IFACEMETHODIMP SetFont(const LOGFONTW* font) override {
-        if (font) font_ = *font;
-        return S_OK;
-    }
+    IFACEMETHODIMP SetFont(const LOGFONTW*) override { return S_OK; }
 
     IFACEMETHODIMP SetTextColor(COLORREF) override { return S_OK; }
 
@@ -175,7 +172,7 @@ private:
     HWND theme_window_ = nullptr;
     RECT rect_{};
     IUnknown* site_ = nullptr;
-    LOGFONTW font_{};
+    HFONT message_font_ = nullptr;
     COLORREF background_ = RGB(255, 255, 255);
     COLORREF text_ = RGB(40, 40, 40);
     bool visuals_dirty_ = false;
@@ -276,6 +273,12 @@ private:
             std::max(1L, rect_.right - rect_.left),
             std::max(1L, rect_.bottom - rect_.top),
             parent_, nullptr, g_module, this);
+        if (window_) {
+            // Allocate once per preview window, not for every WM_PAINT.
+            message_font_ = CreateFontW(-MulDiv(12, GetDpiForWindow(window_), 72),
+                0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET,
+                OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+        }
         return window_ != nullptr;
     }
 
@@ -403,6 +406,7 @@ private:
         if (mapping_) { CloseHandle(mapping_); mapping_ = nullptr; }
         if (destroy_window && window_) { DestroyWindow(window_); window_ = nullptr; }
         if (destroy_window && theme_window_) { DestroyWindow(theme_window_); theme_window_ = nullptr; }
+        if (destroy_window && message_font_) { DeleteObject(message_font_); message_font_ = nullptr; }
     }
 
     void Paint(HWND window) {
@@ -441,13 +445,13 @@ private:
         } else {
             SetBkMode(dc, TRANSPARENT);
             ::SetTextColor(dc, text_);
-            HFONT font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+            HFONT font = message_font_ ? message_font_ : static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
             const auto old_font = SelectObject(dc, font);
             RECT text_rect = client;
             InflateRect(&text_rect, -24, -24);
             const wchar_t* message = status == 2
                 ? (shared_ ? shared_->message : native_error_.c_str())
-                : L"Loading GDSII in an isolated process...";
+                : L"Loading GDSII...";
             DrawTextW(dc, message, -1, &text_rect, DT_CENTER | DT_VCENTER | DT_WORDBREAK | DT_NOPREFIX);
             SelectObject(dc, old_font);
         }

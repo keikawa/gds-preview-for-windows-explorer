@@ -5,6 +5,9 @@ namespace GdsPreview.Renderer;
 
 internal static class HierarchicalBitmapRenderer
 {
+    // Explicit bitmap pixels keep text size independent of the renderer process's
+    // GDI+ DPI defaults. 16 px is 12 pt at the standard 96-DPI preview grid.
+    private const float PreviewFontPixels = 16f;
     // Both PATH and BOUNDARY use the same bounded fill + inward-boundary style.
     internal static Color PaletteColor(int layer, int dataType) => LayerPalette.For(layer, dataType);
     public static Bitmap Render(GdsDocument document, int width, int height) =>
@@ -106,7 +109,7 @@ internal static class HierarchicalBitmapRenderer
             const float margin = 18f;
             const float statusHeight = 34f;
             const float gap = 8f;
-            const float labelHeight = 20f;
+            const float labelHeight = 28f;
             var content = new RectangleF(margin, margin,
                 Math.Max(1, width - margin * 2),
                 Math.Max(1, height - margin * 2 - statusHeight));
@@ -135,12 +138,13 @@ internal static class HierarchicalBitmapRenderer
             if (_document.WasSimplified) status += "    simplified";
             var bitmap = surface.ToBitmap();
             using var graphics = Graphics.FromImage(bitmap);
-            using var labelFont = new Font("Segoe UI", 8f);
+            using var labelFont = new Font("Segoe UI", PreviewFontPixels, FontStyle.Regular, GraphicsUnit.Pixel);
             using var labelBrush = new SolidBrush(_text);
             using var borderPen = new Pen(Color.FromArgb(80, _text));
             using var labelFormat = new StringFormat
             {
                 Trimming = StringTrimming.EllipsisCharacter,
+                LineAlignment = StringAlignment.Center,
                 FormatFlags = StringFormatFlags.NoWrap
             };
 
@@ -149,7 +153,7 @@ internal static class HierarchicalBitmapRenderer
                 var panel = panels[index];
                 graphics.DrawRectangle(borderPen, panel.X, panel.Y, panel.Width, panel.Height);
                 graphics.DrawString(topCells[index].Name, labelFont, labelBrush,
-                    new RectangleF(panel.X + 5, panel.Y + 2, Math.Max(1, panel.Width - 10), labelHeight),
+                    new RectangleF(panel.X + 5, panel.Y + 2, Math.Max(1, panel.Width - 10), labelHeight - 4),
                     labelFormat);
             }
             DrawStatus(graphics, status, width, height);
@@ -333,13 +337,19 @@ internal static class HierarchicalBitmapRenderer
 
         private void DrawStatus(Graphics graphics, string status, int width, int height)
         {
-            using var font = new Font("Segoe UI", 9f);
-            var measured = graphics.MeasureString(status, font);
-            var rectangle = new RectangleF(10, height - 28, Math.Min(width - 20, measured.Width + 16), 22);
+            using var font = new Font("Segoe UI", PreviewFontPixels, FontStyle.Regular, GraphicsUnit.Pixel);
+            var rectangle = new RectangleF(10, height - 36, Math.Max(1, width - 20), 30);
             using var background = new SolidBrush(Color.FromArgb(180, _background));
             using var brush = new SolidBrush(_text);
+            using var format = new StringFormat
+            {
+                Trimming = StringTrimming.EllipsisCharacter,
+                FormatFlags = StringFormatFlags.NoWrap,
+                LineAlignment = StringAlignment.Center
+            };
             graphics.FillRectangle(background, rectangle);
-            graphics.DrawString(status, font, brush, rectangle.X + 8, rectangle.Y + 3);
+            graphics.DrawString(status, font, brush,
+                new RectangleF(rectangle.X + 8, rectangle.Y, Math.Max(1, rectangle.Width - 16), rectangle.Height), format);
         }
 
         private static string FormatLength(double meters)

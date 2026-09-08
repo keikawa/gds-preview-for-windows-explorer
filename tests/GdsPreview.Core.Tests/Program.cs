@@ -16,6 +16,7 @@ internal static class Program
         ("renders multiple design top cells", RendersMultipleDesignTopCells),
         ("single and multiple cells use a white canvas", WhiteCanvas),
         ("theme colours apply to canvas panels and labels", ThemeColors),
+        ("preview text is larger and stays inside its labels", ReadablePreviewText),
         ("resolves rotation reflection and arrays", ResolvesRotationReflectionAndArrays),
         ("retains hierarchy when the top cell follows fifty thousand references", RetainsLateTopHierarchy),
         ("rejects reference overflow instead of corrupting hierarchy", RejectsReferenceOverflow),
@@ -225,6 +226,36 @@ internal static class Program
                     statusPixels++;
             }
             True(statusPixels > 30, "Status text does not use the theme foreground colour.");
+        }
+    }
+
+    private static void ReadablePreviewText()
+    {
+        var document = new GdsDocument();
+        document.AddCell(new GdsCell(new string('H', 200)));
+        using var single = HierarchicalBitmapRenderer.Render(document, 320, 400);
+        document.AddCell(new GdsCell(new string('J', 200)));
+        using var overview = HierarchicalBitmapRenderer.Render(document, 320, 400);
+        static int InkHeight(Bitmap bitmap, Rectangle area)
+        {
+            var rows = 0;
+            for (var y = area.Top; y < area.Bottom; y++)
+            {
+                for (var x = area.Left; x < area.Right; x++)
+                    if (bitmap.GetPixel(x, y).R < 160) { rows++; break; }
+            }
+            return rows;
+        }
+        True(InkHeight(overview, new Rectangle(23, 20, 128, 24)) >= 11,
+            "Cell labels reverted to the small font.");
+        True(InkHeight(single, new Rectangle(18, 364, 284, 30)) >= 11,
+            "Status text reverted to the small font.");
+        Equal(0, CountContentPixels(overview, new Rectangle(158, 20, 4, 24)));
+        Equal(0, CountContentPixels(single, new Rectangle(312, 364, 8, 36)));
+        foreach (var size in new[] { new Size(1, 1), new Size(64, 48), new Size(160, 120) })
+        {
+            using var small = HierarchicalBitmapRenderer.Render(document, size.Width, size.Height);
+            Equal(size, small.Size); // Ellipsis/clipping must work even in tiny panes.
         }
     }
 
