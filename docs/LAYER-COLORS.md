@@ -2,9 +2,28 @@
 
 The renderer assigns a base sRGB colour using only `(layer, datatype)`. File names,
 cell names, other layers, traversal order and process lifetime do not participate.
-PATH and BOUNDARY share the display style described below. Analytical geometry
-coverage, backgrounds and the fixed colour table/hash are unchanged by the
-outline/overlap repair; only the compositing and boundary accent change.
+PATH and BOUNDARY share the display style described below. The canvas, cell panels,
+loading/error states and resize margins share the Windows-derived background colour;
+labels use the matching text colour, with subdued panel borders derived from it.
+Preview creation reads Windows' **app** light/dark mode (`AppsUseLightTheme`):
+white (#FFFFFF) / dark grey (#181B20), with dark / light text. High-contrast mode uses
+system window/text colours. Missing or inaccessible theme settings default to light.
+Host-provided background/text hints are ignored so legacy light colours cannot override
+the Windows app mode. One invisible top-level window, only while a preview is loaded,
+receives [Windows setting notifications](https://learn.microsoft.com/windows/win32/winmsg/wm-settingchange)
+on the existing UI thread; child and message-only windows do not receive the broadcast.
+Colour changes reuse the resize debounce, with identical values ignored. There is
+no polling, extra thread or per-geometry theme check. Unload destroys the receiver.
+The fixed source table/hash, coverage integration and fill/outline opacities are
+unchanged. Light backgrounds (relative luminance >= 0.5) use a gently darkened
+variant: decode each source RGB to linear light, multiply all three channels by
+0.70, then encode to sRGB. This preserves chromaticity up to byte rounding and
+reduces the pale appearance on white; dark backgrounds retain the original RGB.
+The two 256-entry tables are prepared once per renderer process, and the background
+selects one table before drawing. No colour transform or theme branch is added to
+the geometry loop. The same layer/datatype has the same colour across files under
+the same background class. There are no colour settings and no claimed 3:1 contrast
+ratio on white or arbitrary host backgrounds; subpixel coverage still limits contrast.
 
 ## Fill and outlines
 
@@ -86,15 +105,16 @@ sRGB grid with channel levels 0, 8, ..., 248, 255. Additional colours must have:
 
 Distances are squared Euclidean [Oklab](https://bottosson.github.io/posts/oklab/)
 distances AFTER linear-light compositing at 128/255 opacity. The smaller distance
-on the two actual backgrounds is used. Each new colour maximises its minimum
+on the two original dark backgrounds is used. Each new colour maximises its minimum
 distance to the selected colours; ascending RGB enumeration resolves ties.
 Oklab conversion uses Ottosson's published public-domain 2021 matrices.
 
 The original selection parameters are retained to avoid another colour-identity
-change. Production tests now require at least 3:1 on fully covered **boundary**
-pixels on both canvases, not on the intentionally subdued interior fills.
-Neither number is a contrast guarantee for subpixel edges or overlapping
-geometry, nor a WCAG claim.
+change. Historical selection tests retain the 3:1 rendered **boundary** check
+on those original dark canvases. Separate white-background tests verify the uniform
+linear-light adjustment and exact compositing. Neither the historical contrast numbers
+nor the white-background checks guarantee contrast for subpixel edges or overlapping
+geometry, or constitute a WCAG claim.
 Seed grey is retained deliberately; other neutral candidates are excluded.
 
 Generation is NOT a build dependency and does not run on users' computers:
@@ -111,7 +131,15 @@ together, and review its impact on colour identity.
 
 ## Validation
 
-Normal builds test all 256 colours on both backgrounds, fixed mapping anchors,
+Native theme regressions compile the real handler against test-only Windows-query
+stubs, in a separate DLL outside the shipping directory. Tests cover opposite host
+colour hints before/after preview creation, light/dark transitions notified only
+to top-level windows, high contrast, inaccessible settings, and receiver cleanup.
+They also count renderer starts: one at creation, only one more for a theme change,
+even with repeated notifications. Tests never change the user's Windows settings.
+The normal and registered smoke hosts exercise the production DLL's real OS queries.
+
+Normal builds test all 256 colours on white and the historical dark backgrounds, fixed mapping anchors,
 layer/datatype progressions with steps 1/8/256, and separate synthetic documents
 with different cell/primitive order and more than 4096 style keys. Existing
 coverage, hierarchy, equivalent PATH/BOUNDARY and native-host tests still run.
@@ -131,11 +159,11 @@ six-second safety timeout does not make a slowdown acceptable. Do not trade
 preview latency for additional passes, caches or display features without measurement.
 
 The optional `--color-review <directory>` test executable command creates only
-synthetic comparison images: the previous 50%-fill-only compositor and the
-repaired bounded-fill/inward-outline style use the **same fixed palette**,
-backgrounds and geometry. It includes narrow lines,
+synthetic comparison images: original versus gently darkened colours on white,
+with identical geometry, fill and inward outlines. It includes narrow lines,
 large regions, two/three/four overlapping shapes, both palette and layer-index
-swatches, an explicit 1/8/32-enclosing-fill regression comparison, plus approximate
+swatches, an explicit 1/8/32-enclosing-fill comparison against the old 50%-fill-only
+compositor (using the same light palette in that comparison), plus approximate
 protanopia/deuteranopia/tritanopia simulations using
 the severity-100 matrices of Machado, Oliveira and Fernandes (2009). These are
 diagnostic approximations, not universal colour-vision guarantees. Matrix source:

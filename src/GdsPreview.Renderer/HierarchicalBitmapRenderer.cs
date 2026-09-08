@@ -7,7 +7,10 @@ internal static class HierarchicalBitmapRenderer
 {
     // Both PATH and BOUNDARY use the same bounded fill + inward-boundary style.
     internal static Color PaletteColor(int layer, int dataType) => LayerPalette.For(layer, dataType);
-    public static Bitmap Render(GdsDocument document, int width, int height)
+    public static Bitmap Render(GdsDocument document, int width, int height) =>
+        Render(document, width, height, Color.White, Color.FromArgb(40, 40, 40));
+
+    public static Bitmap Render(GdsDocument document, int width, int height, Color background, Color text)
     {
         var allTopCells = document.GetTopCells();
         var topCells = allTopCells
@@ -15,7 +18,7 @@ internal static class HierarchicalBitmapRenderer
             .ToList();
         if (topCells.Count == 0) topCells = allTopCells.ToList();
 
-        var renderer = new Renderer(document);
+        var renderer = new Renderer(document, background: background, text: text);
         return renderer.Render(topCells, width, height);
     }
 
@@ -33,7 +36,7 @@ internal static class HierarchicalBitmapRenderer
         int width, int height, Transform2D transform, bool cacheGeometry = true, bool cullCells = true)
     {
         var renderer = new Renderer(document, cacheGeometry, cullCells);
-        var surface = new CoverageRasterizer(width, height, Color.FromArgb(24, 27, 32));
+        var surface = new CoverageRasterizer(width, height, Color.White);
         renderer.DrawDirect(surface, cell, transform, new RectangleF(0, 0, width, height));
         return surface.ToBitmap();
     }
@@ -45,6 +48,9 @@ internal static class HierarchicalBitmapRenderer
         private readonly GdsDocument _document;
         private readonly bool _cacheGeometry;
         private readonly bool _cullCells;
+        private readonly Color _background;
+        private readonly Color _text;
+        private readonly Color[] _palette;
         private readonly Dictionary<string, BoundsD> _bounds = new(StringComparer.Ordinal);
         private readonly Dictionary<string, long> _expandedGeometry = new(StringComparer.Ordinal);
         private readonly HashSet<string> _renderStack = new(StringComparer.Ordinal);
@@ -53,11 +59,15 @@ internal static class HierarchicalBitmapRenderer
         private long _bufferedPoints;
         private long _outlinePoints;
 
-        public Renderer(GdsDocument document, bool cacheGeometry = true, bool cullCells = true)
+        public Renderer(GdsDocument document, bool cacheGeometry = true, bool cullCells = true,
+            Color? background = null, Color? text = null)
         {
             _document = document;
             _cacheGeometry = cacheGeometry;
             _cullCells = cullCells;
+            _background = background ?? Color.White;
+            _text = text ?? Color.FromArgb(40, 40, 40);
+            _palette = LayerPalette.ForBackground(_background);
         }
 
         public Bitmap Render(IReadOnlyList<GdsCell> topCells, int width, int height)
@@ -68,7 +78,7 @@ internal static class HierarchicalBitmapRenderer
 
         private Bitmap RenderSingle(GdsCell topCell, int width, int height)
         {
-            var surface = new CoverageRasterizer(width, height, Color.FromArgb(24, 27, 32));
+            var surface = new CoverageRasterizer(width, height, _background);
 
             const float margin = 18f;
             const float statusHeight = 34f;
@@ -91,7 +101,7 @@ internal static class HierarchicalBitmapRenderer
 
         private Bitmap RenderOverview(IReadOnlyList<GdsCell> topCells, int width, int height)
         {
-            var surface = new CoverageRasterizer(width, height, Color.FromArgb(24, 27, 32));
+            var surface = new CoverageRasterizer(width, height, _background);
 
             const float margin = 18f;
             const float statusHeight = 34f;
@@ -114,7 +124,7 @@ internal static class HierarchicalBitmapRenderer
                 var panel = new RectangleF(content.X + column * (panelWidth + gap),
                     content.Y + row * (panelHeight + gap), panelWidth, panelHeight);
                 panels.Add(panel);
-                surface.FillBackground(panel, Color.FromArgb(31, 35, 42));
+                surface.FillBackground(panel, _background);
                 var viewport = new RectangleF(panel.X + 5, panel.Y + labelHeight,
                     Math.Max(1, panel.Width - 10), Math.Max(1, panel.Height - labelHeight - 5));
                 DrawCell(surface, topCells[index], viewport);
@@ -126,8 +136,8 @@ internal static class HierarchicalBitmapRenderer
             var bitmap = surface.ToBitmap();
             using var graphics = Graphics.FromImage(bitmap);
             using var labelFont = new Font("Segoe UI", 8f);
-            using var labelBrush = new SolidBrush(Color.FromArgb(220, 228, 238));
-            using var borderPen = new Pen(Color.FromArgb(68, 76, 88));
+            using var labelBrush = new SolidBrush(_text);
+            using var borderPen = new Pen(Color.FromArgb(80, _text));
             using var labelFormat = new StringFormat
             {
                 Trimming = StringTrimming.EllipsisCharacter,
@@ -180,11 +190,11 @@ internal static class HierarchicalBitmapRenderer
                     {
                         case GdsPolygon polygon when polygon.Points.Count >= 3:
                             surface.DrawLayoutPolygon(MapPoints(polygon.Points, transform),
-                                PaletteColor(polygon.Layer, polygon.DataType), viewport);
+                                _palette[LayerPalette.IndexFor(polygon.Layer, polygon.DataType)], viewport);
                             break;
                         case GdsPath path when path.Points.Count >= 2:
                             surface.DrawLayoutPolygon(MapPoints(GetPathOutline(path), transform),
-                                PaletteColor(path.Layer, path.DataType), viewport);
+                                _palette[LayerPalette.IndexFor(path.Layer, path.DataType)], viewport);
                             break;
                         case GdsReference reference:
                             if (!_document.Cells.TryGetValue(reference.CellName, out var target)) break;
@@ -321,13 +331,13 @@ internal static class HierarchicalBitmapRenderer
             return result;
         }
 
-        private static void DrawStatus(Graphics graphics, string status, int width, int height)
+        private void DrawStatus(Graphics graphics, string status, int width, int height)
         {
             using var font = new Font("Segoe UI", 9f);
             var measured = graphics.MeasureString(status, font);
             var rectangle = new RectangleF(10, height - 28, Math.Min(width - 20, measured.Width + 16), 22);
-            using var background = new SolidBrush(Color.FromArgb(180, 0, 0, 0));
-            using var brush = new SolidBrush(Color.FromArgb(225, 230, 238));
+            using var background = new SolidBrush(Color.FromArgb(180, _background));
+            using var brush = new SolidBrush(_text);
             graphics.FillRectangle(background, rectangle);
             graphics.DrawString(status, font, brush, rectangle.X + 8, rectangle.Y + 3);
         }

@@ -14,6 +14,8 @@ internal static class Program
         ("far-away text cannot change rendered output", FarAwayTextCannotChangeRenderedOutput),
         ("renders the production hierarchy path", RendersProductionHierarchyPath),
         ("renders multiple design top cells", RendersMultipleDesignTopCells),
+        ("single and multiple cells use a white canvas", WhiteCanvas),
+        ("theme colours apply to canvas panels and labels", ThemeColors),
         ("resolves rotation reflection and arrays", ResolvesRotationReflectionAndArrays),
         ("retains hierarchy when the top cell follows fifty thousand references", RetainsLateTopHierarchy),
         ("rejects reference overflow instead of corrupting hierarchy", RejectsReferenceOverflow),
@@ -43,7 +45,9 @@ internal static class Program
         ("rasterizer allocation excludes full-canvas scratch", LayoutStyleTests.BoundedAllocation),
         ("fixed 256-color palette and RGB identity", LayerPaletteTests.FixedPalette),
         ("stable layer/datatype mapping without short cycles", LayerPaletteTests.StableMapping),
-        ("rendered palette outline contrast on both canvases", LayerPaletteTests.CanvasContrast),
+        ("palette retains its original dark-background selection contrast", LayerPaletteTests.CanvasContrast),
+        ("light palette darkens uniformly without changing mapping", LayerPaletteTests.LightPalette),
+        ("light palette composites correctly on white", LayerPaletteTests.WhiteCanvas),
         ("layer colors do not depend on document or traversal order", LayerPaletteTests.DocumentIndependence)
     ];
 
@@ -59,10 +63,12 @@ internal static class Program
             ColorReview.Export(args[1]);
             return 0;
         }
-        if (args.Length == 3 && args[0] == "--verify-preview")
+        if ((args.Length == 3 || args.Length == 4) && args[0] == "--verify-preview")
         {
             using var actual = new Bitmap(args[2]);
-            using var expected = HierarchicalBitmapRenderer.Render(GdsParser.ParseFile(args[1]), actual.Width, actual.Height);
+            var (background, text) = PreviewColors(args.Length == 4 ? args[3] : "light");
+            using var expected = HierarchicalBitmapRenderer.Render(GdsParser.ParseFile(args[1]), actual.Width, actual.Height,
+                background, text);
             // Native captures do not have meaningful alpha. Compare layout RGB,
             // excluding the status font (whose DPI can differ between test hosts).
             for (var y = 0; y < actual.Height - 52; y++)
@@ -92,6 +98,25 @@ internal static class Program
 
         Console.WriteLine($"{Tests.Count - failures}/{Tests.Count} tests passed");
         return failures == 0 ? 0 : 1;
+    }
+
+    private static (Color Background, Color Text) PreviewColors(string mode)
+    {
+        if (mode == "system")
+        {
+            if (System.Windows.Forms.SystemInformation.HighContrast)
+                return (SystemColors.Window, SystemColors.WindowText);
+            mode = Microsoft.Win32.Registry.GetValue(
+                @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+                "AppsUseLightTheme", 1) is int value && value == 0 ? "dark" : "light";
+        }
+        return mode switch
+        {
+            "dark" => (Color.FromArgb(24, 27, 32), Color.FromArgb(220, 228, 238)),
+            "high-contrast" => (Color.Black, Color.Yellow),
+            "light" => (Color.White, Color.FromArgb(40, 40, 40)),
+            _ => throw new ArgumentException("Unknown verification theme.")
+        };
     }
 
     private static void ParsesDemoLibrary()
@@ -134,7 +159,7 @@ internal static class Program
     {
         using var bitmap = HierarchicalBitmapRenderer.Render(ParseDemo(), 640, 480);
         Equal(new Size(640, 480), bitmap.Size);
-        True(CountBrightContentPixels(bitmap) > 1_000,
+        True(CountContentPixels(bitmap) > 1_000,
             "The production renderer did not draw the referenced layout.");
     }
 
@@ -147,10 +172,60 @@ internal static class Program
         Equal(3, document.GetTopCells().Count);
 
         using var bitmap = HierarchicalBitmapRenderer.Render(document, 640, 400);
-        True(CountBrightPixels(bitmap, new Rectangle(23, 50, 288, 290)) > 50,
+        True(CountContentPixels(bitmap, new Rectangle(23, 50, 288, 290)) > 50,
             "The overview did not draw the first design cell.");
-        True(CountBrightPixels(bitmap, new Rectangle(329, 50, 288, 290)) > 50,
+        True(CountContentPixels(bitmap, new Rectangle(329, 50, 288, 290)) > 50,
             "The overview did not draw the second design cell.");
+    }
+
+    private static void WhiteCanvas()
+    {
+        using var single = HierarchicalBitmapRenderer.Render(ParseDemo(), 640, 400);
+        using var stream = new MemoryStream();
+        DemoGdsWriter.WriteMultipleTopCells(stream);
+        stream.Position = 0;
+        using var multiple = HierarchicalBitmapRenderer.Render(GdsParser.Parse(stream), 640, 400);
+        foreach (var image in new[] { single, multiple })
+        {
+            Equal(Color.White.ToArgb(), image.GetPixel(0, 0).ToArgb());
+            Equal(Color.White.ToArgb(), image.GetPixel(4, 40).ToArgb());
+            Equal(Color.White.ToArgb(), image.GetPixel(639, 399).ToArgb());
+            True(CountContentPixels(image, new Rectangle(10, 372, 600, 22)) > 30,
+                "Status text is not readable on white.");
+        }
+        using var blank = new Bitmap(64, 64);
+        Equal(Color.White.ToArgb(), multiple.GetPixel(19, 40).ToArgb()); // Inside the cell panel, outside its geometry viewport.
+        using (var graphics = Graphics.FromImage(blank)) graphics.Clear(Color.White);
+        Equal(0, CountContentPixels(blank)); // White background must not pass geometry tests.
+    }
+
+    private static void ThemeColors()
+    {
+        using var stream = new MemoryStream();
+        DemoGdsWriter.WriteMultipleTopCells(stream);
+        stream.Position = 0;
+        var overview = GdsParser.Parse(stream);
+        foreach (var (background, text) in new[] {
+            (Color.White, Color.FromArgb(40, 40, 40)),
+            (Color.FromArgb(24, 27, 32), Color.FromArgb(220, 228, 238)),
+            (Color.Black, Color.Yellow) })
+        foreach (var document in new[] { ParseDemo(), overview })
+        {
+            using var image = HierarchicalBitmapRenderer.Render(document, 640, 400, background, text);
+            Equal(background.ToArgb(), image.GetPixel(0, 0).ToArgb());
+            Equal(background.ToArgb(), image.GetPixel(4, 40).ToArgb());
+            Equal(background.ToArgb(), image.GetPixel(639, 399).ToArgb());
+            if (document == overview) Equal(background.ToArgb(), image.GetPixel(19, 40).ToArgb());
+            var statusPixels = 0;
+            for (var y = 372; y < 394; y++)
+            for (var x = 10; x < 610; x++)
+            {
+                var pixel = image.GetPixel(x, y);
+                if (Math.Abs(pixel.R - text.R) + Math.Abs(pixel.G - text.G) + Math.Abs(pixel.B - text.B) < 90)
+                    statusPixels++;
+            }
+            True(statusPixels > 30, "Status text does not use the theme foreground colour.");
+        }
     }
 
     private static void ResolvesRotationReflectionAndArrays()
@@ -168,7 +243,7 @@ internal static class Program
             HierarchicalBitmapRenderer.ResolveBounds(document, document.Cells["ARRAY"]));
 
         using var bitmap = HierarchicalBitmapRenderer.Render(document, 720, 420);
-        True(CountBrightContentPixels(bitmap) > 300,
+        True(CountContentPixels(bitmap) > 300,
             "Transformed references were not drawn by the production renderer.");
     }
 
@@ -211,7 +286,7 @@ internal static class Program
         var document = GdsParser.Parse(stream);
         Equal(2, document.Cells.Count);
         using var bitmap = HierarchicalBitmapRenderer.Render(document, 320, 240);
-        True(CountBrightContentPixels(bitmap) > 100, "Padded input was not rendered.");
+        True(CountContentPixels(bitmap) > 100, "Padded input was not rendered.");
     }
 
     private static void PreservesEveryVertexInLargePolygon()
@@ -251,17 +326,18 @@ internal static class Program
         double signal = 0;
         static double Luminance(Color c) => .2126 * SrgbColorSpace.Decode(c.R) +
             .7152 * SrgbColorSpace.Decode(c.G) + .0722 * SrgbColorSpace.Decode(c.B);
-        var backgroundLuminance = Luminance(Color.FromArgb(24, 27, 32));
+        var backgroundLuminance = Luminance(Color.White);
         for (var y = 0; y < bitmap.Height - 52; y++)
         for (var x = 0; x < bitmap.Width; x++)
         {
             var pixel = bitmap.GetPixel(x, y);
-            signal += Luminance(pixel) - backgroundLuminance;
+            signal += backgroundLuminance - Luminance(pixel);
         }
         // Weight the retained geometry by its actual base colour; an HSV-specific
         // fixed maximum channel (242) cannot measure signal for other palettes.
+        var palette = LayerPalette.ForBackground(Color.White);
         var expectedSignal = cell.Elements.OfType<GdsPolygon>().Sum(p =>
-            Luminance(HierarchicalBitmapRenderer.PaletteColor(p.Layer, p.DataType)) - backgroundLuminance) *
+            backgroundLuminance - Luminance(palette[LayerPalette.IndexFor(p.Layer, p.DataType)])) *
             Math.Pow(444.0 / 19_990 * 10, 2) * LayoutCompositor.OutlineOpacity / 255.0;
         True(signal > expectedSignal * .75 && signal < expectedSignal * 1.05,
             $"Stored geometry has an unexpected integrated signal: {signal}.");
@@ -286,10 +362,10 @@ internal static class Program
         }
     }
 
-    private static int CountBrightContentPixels(Bitmap bitmap)
-        => CountBrightPixels(bitmap, new Rectangle(0, 0, bitmap.Width, Math.Max(0, bitmap.Height - 52)));
+    private static int CountContentPixels(Bitmap bitmap)
+        => CountContentPixels(bitmap, new Rectangle(0, 0, bitmap.Width, Math.Max(0, bitmap.Height - 52)));
 
-    private static int CountBrightPixels(Bitmap bitmap, Rectangle area)
+    private static int CountContentPixels(Bitmap bitmap, Rectangle area)
     {
         var count = 0;
         var clipped = Rectangle.Intersect(new Rectangle(Point.Empty, bitmap.Size), area);
@@ -297,7 +373,7 @@ internal static class Program
         for (var x = clipped.Left; x < clipped.Right; x++)
         {
             var color = bitmap.GetPixel(x, y);
-            if (Math.Max(color.R, Math.Max(color.G, color.B)) >= 90) count++;
+            if (Math.Min(color.R, Math.Min(color.G, color.B)) < 255) count++;
         }
         return count;
     }

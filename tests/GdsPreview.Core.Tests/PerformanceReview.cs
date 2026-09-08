@@ -16,7 +16,7 @@ internal static class PerformanceReview
         context.Resolving += (_, name) => name.Name == "GdsPreview.Core" ? typeof(GdsDocument).Assembly : null;
         var assembly = context.LoadFromAssemblyPath(Path.Combine(Path.GetFullPath(baselineDirectory), "GdsPreview.Renderer.dll"));
         var baseline = assembly.GetType("GdsPreview.Renderer.HierarchicalBitmapRenderer")!
-            .GetMethod("Render", BindingFlags.Public | BindingFlags.Static)!
+            .GetMethod("Render", [typeof(GdsDocument), typeof(int), typeof(int)])!
             .CreateDelegate<Func<GdsDocument, int, int, Bitmap>>();
         foreach (var (name, document) in Cases())
         {

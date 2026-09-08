@@ -105,7 +105,12 @@ public:
         if (file_path_.empty() || !parent_) return E_UNEXPECTED;
         StopJob();
         stopping_.store(false);
-        if (!CreatePreviewWindow()) return HRESULT_FROM_WIN32(GetLastError());
+        if (!CreatePreviewWindow()) {
+            const DWORD error = GetLastError();
+            StopJob();
+            return HRESULT_FROM_WIN32(error);
+        }
+        ReadWindowsColors();
         StartRenderer();
         return S_OK;
     }
@@ -151,33 +156,29 @@ public:
 
     IFACEMETHODIMP ContextSensitiveHelp(BOOL) override { return E_NOTIMPL; }
 
-    IFACEMETHODIMP SetBackgroundColor(COLORREF color) override {
-        background_ = color;
-        if (window_) InvalidateRect(window_, nullptr, TRUE);
-        return S_OK;
-    }
+    // The host's legacy colours may disagree with the Windows app theme.
+    // Use one Windows-derived pair for both the native window and the bitmap.
+    IFACEMETHODIMP SetBackgroundColor(COLORREF) override { return S_OK; }
 
     IFACEMETHODIMP SetFont(const LOGFONTW* font) override {
         if (font) font_ = *font;
         return S_OK;
     }
 
-    IFACEMETHODIMP SetTextColor(COLORREF color) override {
-        text_ = color;
-        if (window_) InvalidateRect(window_, nullptr, TRUE);
-        return S_OK;
-    }
+    IFACEMETHODIMP SetTextColor(COLORREF) override { return S_OK; }
 
 private:
     std::atomic<ULONG> references_{1};
     std::wstring file_path_;
     HWND parent_ = nullptr;
     HWND window_ = nullptr;
+    HWND theme_window_ = nullptr;
     RECT rect_{};
     IUnknown* site_ = nullptr;
-    COLORREF background_ = RGB(24, 27, 32);
-    COLORREF text_ = RGB(225, 230, 238);
     LOGFONTW font_{};
+    COLORREF background_ = RGB(255, 255, 255);
+    COLORREF text_ = RGB(40, 40, 40);
+    bool visuals_dirty_ = false;
     HANDLE mapping_ = nullptr;
     HANDLE process_ = nullptr;
     HANDLE worker_ = nullptr;
@@ -186,6 +187,35 @@ private:
     SIZE_T mapping_size_ = 0;
     std::atomic<bool> stopping_{false};
     std::wstring native_error_;
+
+    void SetVisualColor(COLORREF& current, COLORREF color) {
+        color &= 0xffffff;
+        if (current == color) return;
+        current = color;
+        visuals_dirty_ = true;
+        if (window_) {
+            SetTimer(window_, RESIZE_TIMER, 180, nullptr);
+            InvalidateRect(window_, nullptr, FALSE);
+        }
+    }
+
+    void ReadWindowsColors() {
+        // Windows app mode is authoritative, independent of host colour calls.
+        // Read only at preview creation or a Windows notification, never per
+        // shape or on a polling timer. Missing/inaccessible settings use light.
+        DWORD light = 1, bytes = sizeof(light);
+        if (RegGetValueW(HKEY_CURRENT_USER,
+                L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &light, &bytes) != ERROR_SUCCESS)
+            light = 1;
+        HIGHCONTRASTW contrast{sizeof(contrast)};
+        const bool high_contrast = SystemParametersInfoW(SPI_GETHIGHCONTRAST,
+            sizeof(contrast), &contrast, 0) && (contrast.dwFlags & HCF_HIGHCONTRASTON);
+        SetVisualColor(background_, high_contrast ? GetSysColor(COLOR_WINDOW)
+            : light ? RGB(255, 255, 255) : RGB(24, 27, 32));
+        SetVisualColor(text_, high_contrast ? GetSysColor(COLOR_WINDOWTEXT)
+            : light ? RGB(40, 40, 40) : RGB(220, 228, 238));
+    }
 
     static LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
         auto* handler = reinterpret_cast<PreviewHandler*>(GetWindowLongPtrW(window, GWLP_USERDATA));
@@ -200,6 +230,11 @@ private:
             return 1;
         case WM_PREVIEW_COMPLETE:
             InvalidateRect(window, nullptr, FALSE);
+            return 0;
+        case WM_SETTINGCHANGE:
+        case WM_THEMECHANGED:
+        case WM_SYSCOLORCHANGE:
+            handler->ReadWindowsColors();
             return 0;
         case WM_PAINT:
             handler->Paint(window);
@@ -230,6 +265,12 @@ private:
         wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         wc.lpszClassName = L"GdsPreview.Native.Window.87F8A6BB";
         RegisterClassExW(&wc);
+        // WM_SETTINGCHANGE is broadcast to top-level windows, not the preview
+        // child. This invisible popup receives it on the existing UI thread.
+        // A message-only (HWND_MESSAGE) window would not receive broadcasts.
+        theme_window_ = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            wc.lpszClassName, L"", WS_POPUP, 0, 0, 0, 0, nullptr, nullptr, g_module, this);
+        if (!theme_window_) return false;
         window_ = CreateWindowExW(0, wc.lpszClassName, L"", WS_CHILD | WS_VISIBLE,
             rect_.left, rect_.top,
             std::max(1L, rect_.right - rect_.left),
@@ -245,7 +286,7 @@ private:
         const SIZE size = RenderSize();
         if (shared_ && (shared_->width != size.cx || shared_->height != size.cy))
             SetTimer(window_, RESIZE_TIMER, 180, nullptr);
-        else
+        else if (!visuals_dirty_)
             KillTimer(window_, RESIZE_TIMER);
     }
 
@@ -269,7 +310,9 @@ private:
     }
 
     void StartRenderer() {
+        KillTimer(window_, RESIZE_TIMER);
         native_error_.clear();
+        visuals_dirty_ = false;
         const SIZE size = RenderSize();
         const LONG width = size.cx;
         const LONG height = size.cy;
@@ -297,6 +340,7 @@ private:
         std::wstring command = L"\"" + renderer + L"\" --mapping " +
             std::to_wstring(reinterpret_cast<unsigned long long>(mapping_)) +
             L" --width " + std::to_wstring(width) + L" --height " + std::to_wstring(height) +
+            L" --background " + std::to_wstring(background_) + L" --text " + std::to_wstring(text_) +
             L" --file \"" + file_path_ + L"\"";
         std::vector<wchar_t> mutable_command(command.begin(), command.end());
         mutable_command.push_back(L'\0');
@@ -358,6 +402,7 @@ private:
         if (shared_) { UnmapViewOfFile(shared_); shared_ = nullptr; }
         if (mapping_) { CloseHandle(mapping_); mapping_ = nullptr; }
         if (destroy_window && window_) { DestroyWindow(window_); window_ = nullptr; }
+        if (destroy_window && theme_window_) { DestroyWindow(theme_window_); theme_window_ = nullptr; }
     }
 
     void Paint(HWND window) {
@@ -365,12 +410,11 @@ private:
         HDC dc = BeginPaint(window, &paint);
         RECT client{};
         GetClientRect(window, &client);
-        HBRUSH background = CreateSolidBrush(background_);
-        FillRect(dc, &client, background);
-        DeleteObject(background);
+        SetDCBrushColor(dc, background_);
+        FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(DC_BRUSH)));
 
         const LONG status = shared_ ? shared_->status : (native_error_.empty() ? 0 : 2);
-        if (status == 1 && shared_->magic == SHARED_MAGIC) {
+        if (status == 1 && !visuals_dirty_ && shared_->magic == SHARED_MAGIC) {
             BITMAPINFO bitmap{};
             bitmap.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
             bitmap.bmiHeader.biWidth = shared_->width;
@@ -396,7 +440,7 @@ private:
                 shared_->width, shared_->height, pixels, &bitmap, DIB_RGB_COLORS, SRCCOPY);
         } else {
             SetBkMode(dc, TRANSPARENT);
-            ::SetTextColor(dc, status == 2 ? RGB(255, 150, 150) : text_);
+            ::SetTextColor(dc, text_);
             HFONT font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
             const auto old_font = SelectObject(dc, font);
             RECT text_rect = client;

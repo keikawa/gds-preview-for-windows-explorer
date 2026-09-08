@@ -17,9 +17,9 @@ internal static class ColorReview
         using (var g = Graphics.FromImage(comparison))
         using (var font = new Font("Segoe UI", 12))
         {
-            g.Clear(Color.FromArgb(24, 27, 32));
-            g.DrawString("Before: 50% fill only (same fixed palette)", font, Brushes.White, 10, 5);
-            g.DrawString("After: bounded fill + inward outlines", font, Brushes.White, before.Width + 10, 5);
+            g.Clear(Color.White);
+            g.DrawString("White background: original colours", font, Brushes.Black, 10, 5);
+            g.DrawString("White background: gently darkened colours", font, Brushes.Black, before.Width + 10, 5);
             g.DrawImageUnscaled(before, 0, 36);
             g.DrawImageUnscaled(after, before.Width, 36);
         }
@@ -47,14 +47,14 @@ internal static class ColorReview
     private static Bitmap Draw(bool styled)
     {
         const int width = 720, height = 860;
-        var surface = new ReferenceRasterizer(width, height, Color.FromArgb(24, 27, 32));
+        var surface = new ReferenceRasterizer(width, height, Color.White);
         var viewport = new RectangleF(0, 0, width, height);
-        surface.FillBackground(new RectangleF(0, 420, width, 440), Color.FromArgb(31, 35, 42));
+        surface.FillBackground(new RectangleF(0, 420, width, 440), Color.White);
         void Fill(PointD[] points, int layer, int type = 0)
         {
-            var color = HierarchicalBitmapRenderer.PaletteColor(layer, type);
-            if (styled) surface.DrawLayoutPolygon(points, color, viewport);
-            else surface.FillPolygon(points, Color.FromArgb(128, color), viewport);
+            var color = styled ? LayerPalette.ForBackground(Color.White)[LayerPalette.IndexFor(layer, type)]
+                : LayerPalette.For(layer, type);
+            surface.DrawLayoutPolygon(points, color, viewport);
         }
         // All first 32 layer keys, not just the attractive prefix of the palette.
         for (var i = 0; i < 32; i++)
@@ -90,7 +90,7 @@ internal static class ColorReview
         var bitmap = surface.ToBitmap();
         using var graphics = Graphics.FromImage(bitmap);
         using var font = new Font("Segoe UI", 10);
-        void Label(string s, float x, float y) => graphics.DrawString(s, font, Brushes.White, x, y);
+        void Label(string s, float x, float y) => graphics.DrawString(s, font, Brushes.Black, x, y);
         Label("Layers 0-31 / datatype 0", 12, 10);
         for (var i = 0; i < 32; i++) Label(i.ToString(), 12 + i % 16 * 44, 86 + i / 16 * 76);
         Label("Physical widths 0.1 / 0.25 / 0.5 / 1 / 2 px; oblique 0.5 px", 12, 193);
@@ -104,20 +104,21 @@ internal static class ColorReview
 
     private static Bitmap PaletteSheet()
     {
-        var surface = new ReferenceRasterizer(960, 992, Color.FromArgb(31, 35, 42));
+        var surface = new ReferenceRasterizer(960, 992, Color.White);
         var clip = new RectangleF(0, 0, 960, 992);
         for (var i = 0; i < 256; i++)
         {
             var x = i % 16 * 60;
             var y = 32 + i / 16 * 60;
-            surface.DrawLayoutPolygon(Rectangle(x + 2, y + 2, x + 58, y + 37), LayerPalette.At(i), clip);
+            surface.DrawLayoutPolygon(Rectangle(x + 2, y + 2, x + 58, y + 37),
+                LayerPalette.ForBackground(Color.White)[i], clip);
         }
         var bitmap = surface.ToBitmap();
         using var g = Graphics.FromImage(bitmap);
         using var font = new Font("Segoe UI", 9);
-        g.DrawString("All 256 palette entries, bounded fill + inward outline on #1F232A (not layer order)", font, Brushes.White, 5, 6);
+        g.DrawString("All 256 palette entries, bounded fill + inward outline on #FFFFFF (not layer order)", font, Brushes.Black, 5, 6);
         for (var i = 0; i < 256; i++)
-            g.DrawString(i.ToString(), font, Brushes.White, i % 16 * 60 + 4, 32 + i / 16 * 60 + 38);
+            g.DrawString(i.ToString(), font, Brushes.Black, i % 16 * 60 + 4, 32 + i / 16 * 60 + 38);
         return bitmap;
     }
 
@@ -139,7 +140,7 @@ internal static class ColorReview
 
     private static Bitmap EnclosingComparison()
     {
-        var surface = new ReferenceRasterizer(960, 680, Color.FromArgb(24, 27, 32));
+        var surface = new ReferenceRasterizer(960, 680, Color.White);
         for (var row = 0; row < 2; row++)
         for (var col = 0; col < 3; col++)
         {
@@ -148,7 +149,7 @@ internal static class ColorReview
             var clip = new RectangleF(x, y, 300, 290);
             void Fill(PointD[] points, int layer)
             {
-                var color = LayerPalette.For(layer, 0);
+                var color = LayerPalette.ForBackground(Color.White)[LayerPalette.IndexFor(layer, 0)];
                 if (row == 1) surface.DrawLayoutPolygon(points, color, clip);
                 else surface.FillPolygon(points, Color.FromArgb(128, color), clip);
             }
@@ -165,8 +166,8 @@ internal static class ColorReview
         var image = surface.ToBitmap();
         using var g = Graphics.FromImage(image);
         using var font = new Font("Segoe UI", 11);
-        g.DrawString("Before: 1 / 8 / 32 enclosing fills drawn after internal structures", font, Brushes.White, 10, 10);
-        g.DrawString("After: same colours and geometry; fill cannot overwrite the separate outlines", font, Brushes.White, 10, 340);
+        g.DrawString("Before: 1 / 8 / 32 enclosing fills drawn after internal structures", font, Brushes.Black, 10, 10);
+        g.DrawString("After: same colours and geometry; fill cannot overwrite the separate outlines", font, Brushes.Black, 10, 340);
         return image;
     }
 

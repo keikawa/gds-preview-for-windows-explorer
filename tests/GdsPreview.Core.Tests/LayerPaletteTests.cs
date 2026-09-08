@@ -72,6 +72,55 @@ internal static class LayerPaletteTests
         }
     }
 
+    public static void LightPalette()
+    {
+        var light = LayerPalette.ForBackground(Color.White);
+        var dark = LayerPalette.ForBackground(Color.FromArgb(24, 27, 32));
+        Require(ReferenceEquals(light, LayerPalette.ForBackground(Color.FromArgb(240, 240, 240))),
+            "Light backgrounds must reuse the same palette without allocating.");
+        Require(light.Select(c => c.ToArgb()).Distinct().Count() == 256, "Light palette entries collided.");
+        for (var i = 0; i < 256; i++)
+        {
+            Require(dark[i] == LayerPalette.At(i), "Dark palette changed.");
+            Require(Math.Abs(Luminance(light[i]) - Luminance(dark[i]) * .70) < .004,
+                "Light palette must uniformly scale linear light, not shift individual hues.");
+            foreach (var (source, actual) in new[] { (dark[i].R, light[i].R), (dark[i].G, light[i].G), (dark[i].B, light[i].B) })
+            {
+                var linear = Decode(source) * .70;
+                var encoded = (linear <= .0031308 ? linear * 12.92 : 1.055 * Math.Pow(linear, 1 / 2.4) - .055) * 255;
+                Require(Math.Abs(actual - encoded) <= .51, "Non-uniform colour darkening.");
+            }
+        }
+        foreach (var layer in new[] { 0, 1, 2, 9, 17, 256, 65535 })
+            Require(dark[LayerPalette.IndexFor(layer, 0)] == LayerPalette.For(layer, 0),
+                "Theme selection must not alter the layer-to-index mapping.");
+    }
+
+    public static void WhiteCanvas()
+    {
+        foreach (var index in Enumerable.Range(0, LayerPalette.Count))
+        {
+            var color = LayerPalette.ForBackground(Color.White)[index];
+            var surface = new CoverageRasterizer(8, 8, Color.White);
+            surface.DrawLayoutPolygon(Rectangle(1, 1, 7, 7), color, new(0, 0, 8, 8));
+            using var image = surface.ToBitmap();
+            Require(image.GetPixel(0, 0).ToArgb() == Color.White.ToArgb(), "White background changed.");
+            foreach (var (x, y, coverage, outline) in new[] { (1, 3, 1d, .5), (3, 3, 1d, 0d) })
+            {
+                var fillAlpha = (coverage - outline) * LayoutCompositor.FillOpacity / 255.0;
+                var outlineAlpha = outline * LayoutCompositor.OutlineOpacity / 255.0;
+                var alpha = fillAlpha + (1 - fillAlpha) * outlineAlpha;
+                var actual = image.GetPixel(x, y);
+                foreach (var (source, channel) in new[] { (color.R, actual.R), (color.G, actual.G), (color.B, actual.B) })
+                {
+                    var expected = 1 + (Decode(source) - 1) * alpha;
+                    var encoded = (expected <= .0031308 ? expected * 12.92 : 1.055 * Math.Pow(expected, 1 / 2.4) - .055) * 255;
+                    Require(Math.Abs(channel - encoded) <= .51, $"White compositing changed palette entry {index}.");
+                }
+            }
+        }
+    }
+
     public static void DocumentIndependence()
     {
         // Synthetic documents only. Different names, cell order, extra types,

@@ -117,6 +117,13 @@ Preview latency and bounded memory are primary design constraints, not just reas
 to stay below the timeout. Fill and outlines share streamed coverage rows; the
 rasterizer does not allocate full-canvas coverage scratch or traverse geometry twice.
 
+The preview follows Windows' **app** light/dark mode (white / dark grey respectively),
+including cell panels, loading/error screens and resize margins. High-contrast mode uses
+system window/text colours. Legacy host colour hints cannot override Windows' theme.
+Windows theme notifications reuse the existing debounced redraw, without polling,
+extra threads or per-shape theme work. There is no theme setting in this app.
+Layer colours stay fixed across files; light backgrounds use a slightly
+darker variant of the same palette, while dark backgrounds retain the original colours.
 Antialiasing integrates polygon edge areas within each pixel. Polygons and paths share a
 subdued fill and a brighter, approximately half-pixel inward boundary accent. Fill and boundary contributions are
 accumulated separately; fill opacity is capped at 32/255 even with many overlaps, and
