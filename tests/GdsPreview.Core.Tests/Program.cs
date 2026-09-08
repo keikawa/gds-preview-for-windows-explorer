@@ -21,6 +21,7 @@ internal static class Program
         ("accepts padding after ENDLIB", AcceptsPaddingAfterEndLib),
         ("preserves every vertex in a large polygon", PreservesEveryVertexInLargePolygon),
         ("bounds memory for large flat layout", BoundsMemoryForLargeFlatLayout),
+        ("shares the geometry budget across cells", SharesGeometryBudgetAcrossCells),
         ("subpixel coverage follows physical width and phase", RenderingTests.SubpixelCoverage),
         ("polygon coverage matches independent pixel clipping", RenderingTests.PolygonCoverage),
         ("hole bridges preserve empty interiors", RenderingTests.Holes),
@@ -233,8 +234,7 @@ internal static class Program
         stream.Position = 0;
         var document = GdsParser.Parse(stream, options: new GdsParserOptions
         {
-            MaximumStoredGeometryElements = 10_000,
-            MaximumStoredGeometryElementsPerCell = 10_000
+            MaximumStoredGeometryElements = 10_000
         });
         var cell = document.Cells["TOP"];
         Equal(10_001, cell.SourceElementCount);
@@ -265,6 +265,25 @@ internal static class Program
             Math.Pow(444.0 / 19_990 * 10, 2) * LayoutCompositor.OutlineOpacity / 255.0;
         True(signal > expectedSignal * .75 && signal < expectedSignal * 1.05,
             $"Stored geometry has an unexpected integrated signal: {signal}.");
+    }
+
+    private static void SharesGeometryBudgetAcrossCells()
+    {
+        using var stream = new MemoryStream();
+        DemoGdsWriter.WriteMultipleTopCells(stream); // Eight utility shapes, then one in each design cell.
+        foreach (var limit in new[] { 0, 8, 9, 10 })
+        {
+            stream.Position = 0;
+            var document = GdsParser.Parse(stream, options: new GdsParserOptions
+            {
+                MaximumStoredGeometryElements = limit
+            });
+            Equal(limit, document.CellsInFileOrder.Sum(cell => cell.Elements.Count));
+            Equal(10 - limit, document.CellsInFileOrder.Sum(cell => cell.SkippedElementCount));
+            Equal(limit < 10, document.WasSimplified);
+            Equal(limit >= 9 ? 1 : 0, document.Cells["DESIGN_A"].Elements.Count);
+            Equal(limit >= 10 ? 1 : 0, document.Cells["DESIGN_B"].Elements.Count);
+        }
     }
 
     private static int CountBrightContentPixels(Bitmap bitmap)

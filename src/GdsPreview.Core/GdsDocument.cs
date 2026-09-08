@@ -45,7 +45,6 @@ public sealed class GdsCell(string name)
     public BoundsD LocalGeometryBounds { get; internal set; } = BoundsD.Empty;
     public int SourceElementCount { get; internal set; }
     public int SkippedElementCount { get; internal set; }
-    internal int StoredGeometryCount { get; set; }
 }
 
 public abstract record GdsElement;

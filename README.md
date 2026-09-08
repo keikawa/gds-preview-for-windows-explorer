@@ -101,7 +101,7 @@ Defaults are intentionally conservative to protect Explorer:
 - File size: 2 GiB
 - GDSII records: 10,000,000
 - Cells: 100,000
-- Retained geometry: 300,000 total and per cell
+- Retained geometry: 300,000 total across all cells
 - Retained vertices: 8,000,000
 - References: 1,000,000 (the preview fails instead of showing an incomplete hierarchy if exceeded)
 - Hierarchy depth: 512

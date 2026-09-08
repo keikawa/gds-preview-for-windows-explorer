@@ -9,7 +9,6 @@ public sealed class GdsParserOptions
     public int MaximumRecords { get; init; } = 10_000_000;
     public int MaximumCells { get; init; } = 100_000;
     public int MaximumStoredGeometryElements { get; init; } = 300_000;
-    public int MaximumStoredGeometryElementsPerCell { get; init; } = 300_000;
     public int MaximumStoredPoints { get; init; } = 8_000_000;
     public int MaximumStoredReferences { get; init; } = 1_000_000;
 }
@@ -231,7 +230,7 @@ public static class GdsParser
                         break;
                     }
                     cell.LocalGeometryBounds = IncludeElementBounds(cell.LocalGeometryBounds, completed);
-                    if (ShouldStore(completed, cell, options, ref storedGeometry, ref storedReferences,
+                    if (ShouldStore(completed, options, ref storedGeometry, ref storedReferences,
                             ref storedPoints))
                     {
                         cell.Elements.Add(BuildElement(completed));
@@ -258,7 +257,7 @@ public static class GdsParser
         return document;
     }
 
-    private static bool ShouldStore(ElementBuilder builder, GdsCell cell, GdsParserOptions options,
+    private static bool ShouldStore(ElementBuilder builder, GdsParserOptions options,
         ref int storedGeometry, ref int storedReferences, ref int storedPoints)
     {
         if (builder.Kind is ElementKind.SRef or ElementKind.ARef)
@@ -271,12 +270,10 @@ public static class GdsParser
         }
 
         if (storedGeometry >= options.MaximumStoredGeometryElements ||
-            cell.StoredGeometryCount >= options.MaximumStoredGeometryElementsPerCell ||
             storedPoints > options.MaximumStoredPoints - builder.Points.Count)
             return false;
 
         storedGeometry++;
-        cell.StoredGeometryCount++;
         storedPoints += builder.Points.Count;
         return true;
     }
